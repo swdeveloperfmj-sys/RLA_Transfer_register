@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "RLA Operations",
+    "slug": "rla-operations",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": { "backgroundColor": "#14243b" },
+    "android": { "package": "com.rla.operations", "usesCleartextTraffic": true },
+    "ios": { "bundleIdentifier": "com.rla.operations" }
+  }
+}
