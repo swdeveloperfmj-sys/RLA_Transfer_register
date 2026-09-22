@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import locationRoutes from './routes/locations.js';
 import roleRoutes from './routes/roles.js';
+import transferRoutes from './routes/transfers.js';
 
 const app = express();
 const localOrigins = /^http:\/\/localhost:\d+$/;
@@ -16,9 +17,11 @@ app.use(cors({
   }
 }));
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api/locations', locationRoutes);
 app.use('/api/roles', roleRoutes);
+app.use('/api/transfers', transferRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use((err, _req, res, _next) => { console.error(err); res.status(500).json({ message: 'An unexpected error occurred.' }); });

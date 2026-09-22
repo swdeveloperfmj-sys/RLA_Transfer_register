@@ -19,6 +19,7 @@ import {
   FaEyeSlash,
 } from "react-icons/fa6";
 import "./styles.css";
+import TransportPage from "./TransportPage.jsx";
 
 // React Icons design system aliases keep icon use consistent throughout the dashboard.
 const Building2 = FaBuilding;
@@ -504,8 +505,11 @@ function Dashboard({ user, onLogout }) {
     locations: "Locations",
     users: "Users",
     roles: "Roles",
+    transport: "Transport",
+    incoming: "Incoming transport",
   };
-  const navigate = (nextPage) => {
+  const navigate = (nextPage, event) => {
+    event?.preventDefault();
     setPage(nextPage);
     if (window.innerWidth < 860) setSidebarCollapsed(true);
   };
@@ -529,11 +533,14 @@ function Dashboard({ user, onLogout }) {
           <span className="nav-caption">WORKSPACE</span>
           <a
             className={page === "dashboard" ? "active" : ""}
-            onClick={() => navigate("dashboard")}
+            href="#dashboard"
+            onClick={(event) => navigate("dashboard", event)}
           >
             <ShieldCheck />
             <span>Dashboard</span>
           </a>
+          <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>{user.location?.trim().toLowerCase() === "head office" ? "Invoice Requests" : "Transport"}</span></a>
+          {user.location?.trim().toLowerCase() !== "head office" && <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span></a>}
           {user.role === "super_admin" && (
             <>
               <span className="nav-caption">MANAGEMENT</span>
@@ -607,6 +614,8 @@ function Dashboard({ user, onLogout }) {
           )}
         </header>
         {error && <div className="error">{error}</div>}
+        {page === "transport" && <TransportPage user={user} locations={locations} />}
+        {page === "incoming" && <TransportPage user={user} locations={locations} incoming />}
         {page === "dashboard" && (
           <div className="stats">
             <article>
@@ -714,7 +723,7 @@ function Dashboard({ user, onLogout }) {
             </div>
           </section>
         )}
-        {(page === "users" || user.role !== "super_admin") && (
+        {(page === "users" || (user.role !== "super_admin" && page === "dashboard")) && (
           <section className="panel">
             <div className="panel-heading">
               <div>
@@ -794,6 +803,17 @@ function App() {
       return null;
     }
   });
+  useEffect(() => {
+    if (!localStorage.getItem("token")) return;
+    request("/auth/me").then(({ user }) => {
+      localStorage.setItem("user", JSON.stringify(user));
+      setSession(user);
+    }).catch(() => {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setSession(null);
+    });
+  }, []);
   const login = (result) => {
     localStorage.setItem("token", result.token);
     localStorage.setItem("user", JSON.stringify(result.user));
