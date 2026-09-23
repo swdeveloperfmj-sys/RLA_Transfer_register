@@ -1,21 +1,18 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs/promises';
 import Transfer from '../models/Transfer.js';
 import Notification from '../models/Notification.js';
 import Location from '../models/Location.js';
 import { protect } from '../middleware/auth.js';
 import { notifyLocationUsers } from '../services/notifications.js';
+import { deleteInvoiceFromR2, r2Configured, uploadInvoiceToR2 } from '../services/r2.js';
 
 const router = Router();
-const storage = multer.diskStorage({
-  destination: 'uploads/',
-  filename: (_req, file, callback) => callback(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname).toLowerCase()}`)
-});
 const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+  // Vercel Functions accept a maximum 4.5 MB request body for server uploads.
+  limits: { fileSize: 4 * 1024 * 1024 },
   fileFilter: (_req, file, callback) => callback(null, ['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype))
 });
 const isHeadOffice = location => location?.trim().toLowerCase() === 'head office';
@@ -64,14 +61,15 @@ router.post('/:id/invoice', upload.single('invoice'), async (req, res) => {
   const transfer = await Transfer.findById(req.params.id); if (!transfer) return res.status(404).json({ message: 'Transfer not found.' });
   if (!req.file) return res.status(400).json({ message: 'Attach an invoice document.' });
   if (!['awaiting_head_office', 'invoice_uploaded'].includes(transfer.status)) {
-    await fs.unlink(req.file.path).catch(() => {});
     return res.status(409).json({ message: 'Invoice cannot be replaced after dispatch.' });
   }
-  if (transfer.invoiceFile) {
-    const oldFile = path.join(process.cwd(), 'uploads', path.basename(transfer.invoiceFile));
-    await fs.unlink(oldFile).catch(() => {});
-  }
-  transfer.invoiceFile = `/uploads/${req.file.filename}`; transfer.invoiceOriginalName = req.file.originalname; transfer.invoiceUploadedAt = new Date(); transfer.status = 'invoice_uploaded'; await transfer.save();
+  if (!r2Configured()) return res.status(503).json({ message: 'Invoice storage is not configured. Add the Cloudflare R2 environment variables before uploading.' });
+  const safeName = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storageKey = `invoices/${transfer._id}/${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`;
+  const invoiceUrl = await uploadInvoiceToR2({ key: storageKey, body: req.file.buffer, contentType: req.file.mimetype });
+  const oldStorageKey = transfer.invoiceStorageKey;
+  transfer.invoiceFile = invoiceUrl; transfer.invoiceStorageKey = storageKey; transfer.invoiceOriginalName = req.file.originalname; transfer.invoiceUploadedAt = new Date(); transfer.status = 'invoice_uploaded'; await transfer.save();
+  if (oldStorageKey) await deleteInvoiceFromR2(oldStorageKey).catch(error => console.error('Could not remove replaced R2 invoice:', error.message));
   await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Invoice ready for dispatch', message: `Invoice uploaded for transport to ${transfer.destinationLocation}. Review and confirm dispatch.`, transfer: transfer._id });
   res.json(transfer);
 });

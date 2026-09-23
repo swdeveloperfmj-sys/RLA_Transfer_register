@@ -545,6 +545,9 @@ function Dashboard({ user, onLogout }) {
     setSelectedTransferId("");
     if (window.innerWidth < 860) setSidebarCollapsed(true);
   };
+  const confirmLogout = () => {
+    if (window.confirm("Are you sure you want to log out?")) onLogout();
+  };
   const openNotification = async (notification) => {
     setNotificationsOpen(false);
     if (!notification.read) {
@@ -622,7 +625,7 @@ function Dashboard({ user, onLogout }) {
               {user.role === "super_admin" ? "Super Admin" : "Team Member"}
             </small>
           </span>
-          <button onClick={onLogout} title="Sign out">
+          <button onClick={confirmLogout} title="Sign out">
             <LogOut />
           </button>
         </div>
@@ -663,7 +666,7 @@ function Dashboard({ user, onLogout }) {
             {darkMode ? <FaSun /> : <FaMoon />}<span>{darkMode ? "Light" : "Dark"}</span>
           </button>
           </div>
-          <button className="logout-mobile" onClick={onLogout}>
+          <button className="logout-mobile" onClick={confirmLogout}>
             <LogOut />
           </button>
           {user.role === "super_admin" && page === "users" && (
@@ -883,7 +886,7 @@ function App() {
     setSession(null);
   };
   return <>
-    <Toaster position="top-right" toastOptions={{ style: { borderRadius: "12px", background: "#14243b", color: "#fff", maxWidth: "420px" }, success: { iconTheme: { primary: "#62d5b3", secondary: "#14243b" } } }} />
+    <Toaster position="bottom-right" toastOptions={{ style: { borderRadius: "12px", background: "#14243b", color: "#fff", maxWidth: "420px" }, success: { iconTheme: { primary: "#62d5b3", secondary: "#14243b" } } }} />
     {session ? <Dashboard user={session} onLogout={logout} /> : <Login onLogin={login} />}
   </>;
 }

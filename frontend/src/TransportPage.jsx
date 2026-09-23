@@ -290,7 +290,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
               <div className="transfer-actions">
                 {transfer.invoiceFile ? (
                   <a
-                    href={`${API.replace("/api", "")}${transfer.invoiceFile}`}
+                    href={transfer.invoiceFile.startsWith("http") ? transfer.invoiceFile : `${API.replace("/api", "")}${transfer.invoiceFile}`}
                     target="_blank"
                     rel="noreferrer"
                     className="invoice-view"
@@ -313,7 +313,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
                           ? "Replace invoice"
                           : "Upload invoice"}
                       </span>
-                      <small>PDF, JPG or PNG · Max 10MB</small>
+                      <small>PDF, JPG or PNG · Max 4MB</small>
                       <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"

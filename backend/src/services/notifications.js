@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
+import { sendTextwareSms } from './sms.js';
 
 let transporter;
 
@@ -47,14 +48,13 @@ export const notifyLocationUsers = async ({ location, message, subject = 'RLA Op
       // responsible users for Head Office requests.
       ...(location?.trim().toLowerCase() === 'head office' ? [{ role: 'super_admin' }] : [])
     ]
-  }).select('name email');
+  }).select('name email mobileNumber');
   await Promise.all(recipients.map(async recipient => {
     await Notification.create({ user: recipient._id, location, message, transfer });
-    try {
-      await sendEmail({ recipient, subject, message });
-    } catch (error) {
-      console.error(`Could not send notification email to ${recipient.email}:`, error.message);
-    }
+    await Promise.all([
+      sendEmail({ recipient, subject, message }).catch(error => console.error(`Could not send notification email to ${recipient.email}:`, error.message)),
+      sendTextwareSms({ mobileNumber: recipient.mobileNumber, message: `RLA: ${message}` }).catch(error => console.error(`Could not send SMS to ${recipient.name}:`, error.message))
+    ]);
   }));
   return recipients.length;
 };
