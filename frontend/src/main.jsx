@@ -5,7 +5,6 @@ import {
   FaBars,
   FaBuilding,
   FaChevronLeft,
-  FaChevronRight,
   FaLocationDot,
   FaPlus,
   FaShieldHalved,
@@ -22,6 +21,7 @@ import {
 } from "react-icons/fa6";
 import "./styles.css";
 import TransportPage from "./TransportPage.jsx";
+import rlaLogo from "../assets/logo.png";
 
 // React Icons design system aliases keep icon use consistent throughout the dashboard.
 const Building2 = FaBuilding;
@@ -29,7 +29,6 @@ const LogOut = FaRightFromBracket;
 const MapPin = FaLocationDot;
 const Menu = FaBars;
 const PanelLeftClose = FaChevronLeft;
-const PanelLeftOpen = FaChevronRight;
 const Plus = FaPlus;
 const ShieldCheck = FaShieldHalved;
 const Users = FaUsers;
@@ -38,6 +37,17 @@ const X = FaXmark;
 function PasswordInput({ value, onChange, ...props }) {
   const [visible, setVisible] = useState(false);
   return <span className="password-control"><input {...props} type={visible ? "text" : "password"} value={value} onChange={onChange} /><button type="button" className="password-toggle" onClick={() => setVisible(!visible)} title={visible ? "Hide password" : "Show password"}>{visible ? <FaEyeSlash /> : <FaEye />}</button></span>;
+}
+
+function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm, danger = false }) {
+  return <div className="confirm-backdrop" role="presentation">
+    <section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+      <span className={`confirm-icon ${danger ? "danger" : ""}`}>{danger ? "!" : "?"}</span>
+      <h2 id="confirm-title">{title}</h2>
+      <p>{message}</p>
+      <div className="confirm-actions"><button className="confirm-cancel" onClick={onCancel}>Cancel</button><button className={danger ? "confirm-danger" : "confirm-primary"} onClick={onConfirm}>{confirmLabel}</button></div>
+    </section>
+  </div>;
 }
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -51,7 +61,7 @@ const request = async (path, options = {}) => {
       ...options.headers,
     },
   });
-  const data = await response.json();
+  const data = response.status === 204 ? null : await response.json();
   if (!response.ok) throw new Error(data.message || "Request failed.");
   return data;
 };
@@ -61,28 +71,36 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otp, setOtp] = useState("");
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      onLogin(
-        await request("/auth/login", {
+      const result = await request("/auth/login", {
           method: "POST",
           body: JSON.stringify({ email, password }),
-        }),
-      );
+        });
+      if (result.requiresOtp) { setOtpEmail(result.email); return; }
+      onLogin(result);
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
     }
   };
+  const verifyOtp = async (e) => {
+    e.preventDefault(); setBusy(true); setError("");
+    try { onLogin(await request("/auth/verify-super-admin", { method: "POST", body: JSON.stringify({ email: otpEmail, code: otp }) })); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  };
   return (
     <main className="login-page">
       <section className="brand-panel">
         <div className="logo">
-          <Building2 /> RLA
+          <img src={rlaLogo} className="brand-logo-image" alt="RLA Transfer" />
         </div>
         <div>
           <span className="eyebrow">OPERATIONS PORTAL</span>
@@ -97,14 +115,19 @@ function Login({ onLogin }) {
       </section>
       <section className="login-card">
         <div className="mobile-logo">
-          <Building2 /> RLA
+          <img src={rlaLogo} className="brand-logo-image" alt="RLA Transfer" />
         </div>
         <div className="login-copy">
           <span className="eyebrow">WELCOME BACK</span>
-          <h2>Sign in to your account</h2>
-          <p>Enter your details to access your workspace.</p>
+          <h2>{otpEmail ? "Verify your sign in" : "Sign in to your account"}</h2>
+          <p>{otpEmail ? `A 6-digit code was sent to ${otpEmail}.` : "Enter your details to access your workspace."}</p>
         </div>
-        <form onSubmit={submit}>
+        {otpEmail ? <form onSubmit={verifyOtp}>
+          <label>Verification code<input value={otp} onChange={(e) => setOtp(e.target.value)} inputMode="numeric" maxLength="6" placeholder="Enter 6-digit code" required /></label>
+          {error && <div className="error">{error}</div>}
+          <button disabled={busy}>{busy ? "Verifying…" : "Verify and sign in"}</button>
+          <button type="button" className="otp-resend" disabled={busy} onClick={submit}>Resend code</button>
+        </form> : <form onSubmit={submit}>
           <label>
             Work email
             <input
@@ -126,7 +149,7 @@ function Login({ onLogin }) {
           </label>
           {error && <div className="error">{error}</div>}
           <button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
-        </form>
+        </form>}
         <p className="help">Need access? Contact your system administrator.</p>
       </section>
     </main>
@@ -146,12 +169,31 @@ function AddUser({ locations, roles, onClose, onCreated }) {
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailCode, setEmailCode] = useState("");
+  const [mobileCode, setMobileCode] = useState("");
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [mobileVerified, setMobileVerified] = useState(false);
+  const [verifying, setVerifying] = useState("");
+  const sendCode = async (channel) => {
+    const target = channel === "email" ? { email: form.email } : { mobileNumber: form.mobileNumber };
+    setVerifying(`${channel}-send`); setError("");
+    try { await request(`/users/verification/${channel}/send`, { method: "POST", body: JSON.stringify(target) }); }
+    catch (err) { setError(err.message); }
+    finally { setVerifying(""); }
+  };
+  const confirmCode = async (channel) => {
+    const target = channel === "email" ? { email: form.email, code: emailCode } : { mobileNumber: form.mobileNumber, code: mobileCode };
+    setVerifying(`${channel}-confirm`); setError("");
+    try { await request(`/users/verification/${channel}/confirm`, { method: "POST", body: JSON.stringify(target) }); channel === "email" ? setEmailVerified(true) : setMobileVerified(true); }
+    catch (err) { setError(err.message); }
+    finally { setVerifying(""); }
+  };
   const submit = async (e) => {
     e.preventDefault();
-    if (form.email !== form.confirmEmail)
-      return setError("Email addresses do not match.");
     if (form.password !== form.confirmPassword)
       return setError("Passwords do not match.");
+    if (!emailVerified) return setError("Verify the work email with its OTP first.");
+    if (form.mobileNumber && !mobileVerified) return setError("Verify the mobile number with its OTP first.");
     setBusy(true);
     setError("");
     try {
@@ -188,30 +230,19 @@ function AddUser({ locations, roles, onClose, onCreated }) {
               type="email"
               required
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => { setForm({ ...form, email: e.target.value }); setEmailVerified(false); }}
             />
           </label>
-          <label>
-            Verify work email
-            <input
-              type="email"
-              required
-              value={form.confirmEmail}
-              onChange={(e) =>
-                setForm({ ...form, confirmEmail: e.target.value })
-              }
-            />
-          </label>
+          <div className="otp-row"><button type="button" onClick={() => sendCode("email")} disabled={!form.email || verifying === "email-send" || emailVerified}>{emailVerified ? "Email verified" : verifying === "email-send" ? "Sending…" : "Send email OTP"}</button>{!emailVerified && <><input value={emailCode} onChange={(e) => setEmailCode(e.target.value)} placeholder="Enter email OTP" inputMode="numeric" /><button type="button" onClick={() => confirmCode("email")} disabled={!emailCode || verifying === "email-confirm"}>{verifying === "email-confirm" ? "Checking…" : "Verify"}</button></>}</div>
           <label>
             Mobile number <small>Optional</small>
             <input
               type="tel"
               value={form.mobileNumber}
-              onChange={(e) =>
-                setForm({ ...form, mobileNumber: e.target.value })
-              }
+              onChange={(e) => { setForm({ ...form, mobileNumber: e.target.value }); setMobileVerified(false); }}
             />
           </label>
+          {form.mobileNumber && <div className="otp-row"><button type="button" onClick={() => sendCode("mobile")} disabled={verifying === "mobile-send" || mobileVerified}>{mobileVerified ? "Mobile verified" : verifying === "mobile-send" ? "Sending…" : "Send SMS OTP"}</button>{!mobileVerified && <><input value={mobileCode} onChange={(e) => setMobileCode(e.target.value)} placeholder="Enter SMS OTP" inputMode="numeric" /><button type="button" onClick={() => confirmCode("mobile")} disabled={!mobileCode || verifying === "mobile-confirm"}>{verifying === "mobile-confirm" ? "Checking…" : "Verify"}</button></>}</div>}
           <label>
             Role
             <select
@@ -395,6 +426,7 @@ function Dashboard({ user, onLogout }) {
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState("");
+  const [confirmation, setConfirmation] = useState(null);
   const shownNotificationIds = useRef(new Set());
   useEffect(() => {
     request("/locations").then(setLocations);
@@ -409,11 +441,17 @@ function Dashboard({ user, onLogout }) {
   }, [user.role]);
   useEffect(() => {
     let mounted = true;
+    let initialLoad = true;
     const showNewNotifications = async () => {
       try {
         const latestNotifications = await request("/transfers/notifications");
         if (!mounted) return;
         setNotifications(latestNotifications);
+        if (initialLoad) {
+          latestNotifications.forEach((notification) => shownNotificationIds.current.add(notification._id));
+          initialLoad = false;
+          return;
+        }
         const unread = latestNotifications.filter((notification) => !notification.read && !shownNotificationIds.current.has(notification._id));
         unread.slice(0, 5).forEach((notification) => {
           shownNotificationIds.current.add(notification._id);
@@ -487,7 +525,6 @@ function Dashboard({ user, onLogout }) {
     }
   };
   const removeLocation = async (item) => {
-    if (!window.confirm(`Delete ${item.name}?`)) return;
     try {
       await request(`/locations/${item._id}`, { method: "DELETE" });
       setLocations(locations.filter((x) => x._id !== item._id));
@@ -509,7 +546,6 @@ function Dashboard({ user, onLogout }) {
     }
   };
   const removeRole = async (role) => {
-    if (!window.confirm(`Delete ${role.name}?`)) return;
     try {
       await request(`/roles/${role._id}`, { method: "DELETE" });
       setRoles(roles.filter((x) => x._id !== role._id));
@@ -518,15 +554,9 @@ function Dashboard({ user, onLogout }) {
     }
   };
   const removeUser = async (person) => {
-    if (
-      !window.confirm(
-        `Permanently delete ${person.name}? This cannot be undone.`,
-      )
-    )
-      return;
     try {
       await request(`/users/${person._id}`, { method: "DELETE" });
-      setUsers(users.filter((x) => x._id !== person._id));
+      setUsers(await request("/users"));
     } catch (e) {
       setError(e.message);
     }
@@ -546,7 +576,7 @@ function Dashboard({ user, onLogout }) {
     if (window.innerWidth < 860) setSidebarCollapsed(true);
   };
   const confirmLogout = () => {
-    if (window.confirm("Are you sure you want to log out?")) onLogout();
+    setConfirmation({ title: "Log out?", message: "Are you sure you want to log out of RLA Operations?", confirmLabel: "Log out", onConfirm: onLogout });
   };
   const openNotification = async (notification) => {
     setNotificationsOpen(false);
@@ -564,19 +594,19 @@ function Dashboard({ user, onLogout }) {
   const unreadCount = notifications.filter((notification) => !notification.read).length;
   return (
     <main className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${darkMode ? "theme-dark" : ""}`}>
-      <aside>
+      <aside onClick={() => sidebarCollapsed && setSidebarCollapsed(false)}>
         <div className="sidebar-top">
           <div className="logo">
-            <Building2 />
+            <img src={rlaLogo} className="sidebar-logo-image" alt="RLA Transfer" />
             <span>RLA</span>
           </div>
-          <button
+          {!sidebarCollapsed && <button
             className="collapse-toggle"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={(event) => { event.stopPropagation(); setSidebarCollapsed(true); }}
+            title="Collapse sidebar"
           >
-            {sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-          </button>
+            <PanelLeftClose />
+          </button>}
         </div>
         <nav>
           <span className="nav-caption">WORKSPACE</span>
@@ -745,7 +775,7 @@ function Dashboard({ user, onLogout }) {
                 <div key={item._id}>
                   <MapPin /> <span>{item.name}</span>
                   <button onClick={() => changeLocation(item)}>Edit</button>
-                  <button onClick={() => removeLocation(item)}>Delete</button>
+                  <button onClick={() => setConfirmation({ title: "Delete location?", message: `Delete ${item.name}? This cannot be undone.`, confirmLabel: "Delete", danger: true, onConfirm: () => removeLocation(item) })}>Delete</button>
                 </div>
               ))}
             </div>
@@ -778,7 +808,7 @@ function Dashboard({ user, onLogout }) {
                   {role.isSystem ? (
                     <em>System</em>
                   ) : (
-                    <button onClick={() => removeRole(role)}>Delete</button>
+                    <button onClick={() => setConfirmation({ title: "Delete role?", message: `Delete ${role.name}? This cannot be undone.`, confirmLabel: "Delete", danger: true, onConfirm: () => removeRole(role) })}>Delete</button>
                   )}
                 </div>
               ))}
@@ -822,7 +852,7 @@ function Dashboard({ user, onLogout }) {
                       {person.role !== "super_admin" && (
                         <button className={person.isActive ? "status active-status" : "status"} onClick={() => toggleStatus(person)}>{person.isActive ? "Active" : "Disabled"}</button>
                       )}
-                      <button className="delete-user" onClick={() => removeUser(person)} title="Delete user"><FaTrashCan /></button>
+                      <button className="delete-user" onClick={() => setConfirmation({ title: "Delete user?", message: `Permanently delete ${person.name}? This cannot be undone.`, confirmLabel: "Delete user", danger: true, onConfirm: () => removeUser(person) })} title="Delete user"><FaTrashCan /></button>
                     </div>
                   </div>
                 ))}
@@ -853,6 +883,7 @@ function Dashboard({ user, onLogout }) {
         />
       )}
       {editing && <EditUser user={editing} locations={locations} roles={roles} onClose={() => setEditing(null)} onUpdated={async () => { const latestUsers = await request('/users'); setUsers(latestUsers); setEditing(null); }} />}
+      {confirmation && <ConfirmDialog {...confirmation} onCancel={() => setConfirmation(null)} onConfirm={async () => { await confirmation.onConfirm(); setConfirmation(null); }} />}
     </main>
   );
 }
@@ -891,3 +922,7 @@ function App() {
   </>;
 }
 createRoot(document.getElementById("root")).render(<App />);
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}

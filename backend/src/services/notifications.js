@@ -22,7 +22,7 @@ const getTransporter = () => {
   return transporter;
 };
 
-const sendEmail = async ({ recipient, subject, message }) => {
+export const sendNotificationEmail = async ({ recipient, subject, message }) => {
   const mailer = getTransporter();
   if (!mailer) {
     console.warn(`Email not sent (SMTP is not configured): ${subject} -> ${recipient.email}`);
@@ -52,7 +52,7 @@ export const notifyLocationUsers = async ({ location, message, subject = 'RLA Op
   await Promise.all(recipients.map(async recipient => {
     await Notification.create({ user: recipient._id, location, message, transfer });
     await Promise.all([
-      sendEmail({ recipient, subject, message }).catch(error => console.error(`Could not send notification email to ${recipient.email}:`, error.message)),
+      sendNotificationEmail({ recipient, subject, message }).catch(error => console.error(`Could not send notification email to ${recipient.email}:`, error.message)),
       sendTextwareSms({ mobileNumber: recipient.mobileNumber, message: `RLA: ${message}` }).catch(error => console.error(`Could not send SMS to ${recipient.name}:`, error.message))
     ]);
   }));
