@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import {
   FaArrowRight,
   FaBoxOpen,
@@ -31,10 +32,61 @@ export default function TransportPage({ user, locations, incoming = false, highl
     [creating, setCreating] = useState(false),
     [workingTransferId, setWorkingTransferId] = useState("");
   const [requestMode, setRequestMode] = useState("manual");
+  const [sheetRows, setSheetRows] = useState([]);
   const createInFlight = useRef(false);
-  const openSpreadsheet = () => {
-    setRequestMode("excel");
-    setItems((current) => current.length >= 5 ? current : [...current, ...Array.from({ length: 5 - current.length }, () => ({ itemCode: "", quantity: 1 }))]);
+  const downloadTemplate = () => {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["Item code", "Quantity"],
+      ["ITEM-001", 1],
+      ["ITEM-002", 5],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Transfer items");
+    XLSX.writeFile(workbook, "rla-transfer-items-template.xlsx");
+  };
+  const importSpreadsheet = async (file) => {
+    if (!file) return;
+    try {
+      if (!file.name.toLowerCase().endsWith(".xlsx")) throw new Error("Please upload an XLSX (.xlsx) file.");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+      const normalize = (value) => String(value).trim().toLowerCase().replace(/[\s_-]/g, "");
+      const headers = rows[0] || [];
+      const itemCodeColumn = headers.findIndex((header) => normalize(header) === "itemcode");
+      const quantityColumn = headers.findIndex((header) => ["quantity", "qty"].includes(normalize(header)));
+      if (itemCodeColumn < 0 || quantityColumn < 0) {
+        throw new Error("The XLSX sheet must contain Item code and Quantity columns.");
+      }
+      const preview = rows.slice(1).map((row, index) => {
+        const itemCode = String(row[itemCodeColumn] ?? "").trim();
+        const rawQuantity = row[quantityColumn];
+        const quantity = Number(rawQuantity);
+        const emptyQuantity = rawQuantity === "" || rawQuantity === null || rawQuantity === undefined;
+        if (!itemCode && emptyQuantity) {
+          return { rowNumber: index + 2, itemCode: "—", quantity: "—", status: "skipped", reason: "Blank row skipped" };
+        }
+        if (!itemCode || !Number.isFinite(quantity) || quantity < 1) {
+          return { rowNumber: index + 2, itemCode: itemCode || "—", quantity: emptyQuantity ? "—" : rawQuantity, status: "rejected", reason: "Enter a valid item code and quantity" };
+        }
+        return { rowNumber: index + 2, itemCode, quantity, status: "accepted", reason: "Ready to send" };
+      });
+      if (!preview.length) throw new Error("The XLSX sheet has no item rows.");
+      setSheetRows(preview);
+      setItems(preview.filter((row) => row.status === "accepted").map((row) => ({ itemCode: row.itemCode, quantity: row.quantity })));
+      setError("");
+    } catch (e) {
+      setSheetRows([]);
+      setItems([]);
+      setError(e.message || "Could not read the XLSX file.");
+    }
+  };
+  const removeSheetRow = (rowNumber) => {
+    setSheetRows((current) => {
+      const remaining = current.filter((row) => row.rowNumber !== rowNumber);
+      setItems(remaining.filter((row) => row.status === "accepted").map((row) => ({ itemCode: row.itemCode, quantity: row.quantity })));
+      return remaining;
+    });
   };
   const headOffice = user.location?.trim().toLowerCase() === "head office";
   const load = async () => {
@@ -50,6 +102,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
   const create = async (event) => {
     event.preventDefault();
     if (createInFlight.current) return;
+    if (requestMode === "excel" && !sheetRows.length) { setError("Upload an XLSX sheet first."); return; }
     const validItems = items
       .filter((item) => item.itemCode?.trim() && Number(item.quantity) >= 1)
       .map((item) => ({ ...item, itemCode: item.itemCode.trim() }));
@@ -64,6 +117,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
       });
       setDestination("");
       setItems([{ itemCode: "", quantity: 1 }]);
+      setSheetRows([]);
       await load();
     } catch (e) {
       setError(e.message);
@@ -128,7 +182,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
             <p>Choose a destination and list every item in this shipment.</p>
           </div>
           <form onSubmit={create}>
-            <div className="request-mode-tabs"><button type="button" className={requestMode === "manual" ? "active" : ""} onClick={() => setRequestMode("manual")}>Manual entry</button><button type="button" className={requestMode === "excel" ? "active" : ""} onClick={openSpreadsheet}>Spreadsheet</button></div>
+            <div className="request-mode-tabs"><button type="button" className={requestMode === "manual" ? "active" : ""} onClick={() => setRequestMode("manual")}>Manual entry</button><button type="button" className={requestMode === "excel" ? "active" : ""} onClick={() => setRequestMode("excel")}>Spreadsheet</button></div>
             <label>
               Destination location
               <select
@@ -150,13 +204,24 @@ export default function TransportPage({ user, locations, incoming = false, highl
                   ))}
               </select>
             </label>
-            {requestMode === "excel" && <p className="spreadsheet-help">Enter or update item codes and quantities directly in the sheet.</p>}
-            <div className={`items-form-head ${requestMode === "excel" ? "spreadsheet-head" : ""}`}>
-              {requestMode === "excel" && <span>#</span>}<span>Item code</span><span>Quantity</span>
-            </div>
+            {requestMode === "excel" ? <>
+              <div className="excel-actions">
+                <label className="excel-file-picker"><FaCloudArrowUp /> Upload XLSX sheet
+                  <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => importSpreadsheet(e.target.files?.[0])} />
+                </label>
+                <button type="button" className="template-download" onClick={downloadTemplate}><FaFileInvoice /> Download XLSX template</button>
+              </div>
+              <p className="spreadsheet-help">Use the template with <strong>Item code</strong> and <strong>Quantity</strong> columns. Only accepted rows will be sent.</p>
+              {sheetRows.length > 0 && <div className="sheet-preview">
+                <div className="sheet-preview-head"><span>Row</span><span>Item code</span><span>Quantity</span><span>Status</span><span>Action</span></div>
+                {sheetRows.map((row) => <div className={`sheet-preview-row ${row.status}`} key={row.rowNumber}>
+                  <span>{row.rowNumber}</span><span>{row.itemCode}</span><span>{row.quantity}</span><span><b>{row.status}</b><small>{row.reason}</small></span><button type="button" className="remove-sheet-row" onClick={() => removeSheetRow(row.rowNumber)} aria-label={`Remove row ${row.rowNumber}`} title="Remove row"><FaTrashCan /></button>
+                </div>)}
+              </div>}
+            </> : <>
+            <div className="items-form-head"><span>Item code</span><span>Quantity</span></div>
             {items.map((item, index) => (
               <div className={`item-row ${requestMode === "excel" ? "spreadsheet-row" : ""}`} key={index}>
-                {requestMode === "excel" && <span className="sheet-row-number">{index + 1}</span>}
                 <input
                   placeholder="Enter item code"
                   value={item.itemCode}
@@ -201,8 +266,9 @@ export default function TransportPage({ user, locations, incoming = false, highl
               className="add-item"
               onClick={() => setItems([...items, { itemCode: "", quantity: 1 }])}
             >
-              <FaPlus /> {requestMode === "excel" ? "Add spreadsheet row" : "Add another item"}
+              <FaPlus /> Add another item
             </button>
+            </>}
             <button type="submit" className="send-transfer" disabled={creating}>
               <FaTruckFast /> {creating ? "Sending request…" : "Send request to Head Office"}
             </button>
