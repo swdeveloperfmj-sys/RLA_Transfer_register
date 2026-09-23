@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import toast, { Toaster } from "react-hot-toast";
 import {
   FaBars,
   FaBuilding,
@@ -17,6 +18,7 @@ import {
   FaSun,
   FaEye,
   FaEyeSlash,
+  FaBell,
 } from "react-icons/fa6";
 import "./styles.css";
 import TransportPage from "./TransportPage.jsx";
@@ -390,6 +392,10 @@ function Dashboard({ user, onLogout }) {
   const [darkMode, setDarkMode] = useState(
     () => localStorage.getItem("rla-theme") === "dark",
   );
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [selectedTransferId, setSelectedTransferId] = useState("");
+  const shownNotificationIds = useRef(new Set());
   useEffect(() => {
     request("/locations").then(setLocations);
     if (user.role === "super_admin") {
@@ -401,6 +407,31 @@ function Dashboard({ user, onLogout }) {
         .catch((e) => setError(e.message));
     }
   }, [user.role]);
+  useEffect(() => {
+    let mounted = true;
+    const showNewNotifications = async () => {
+      try {
+        const latestNotifications = await request("/transfers/notifications");
+        if (!mounted) return;
+        setNotifications(latestNotifications);
+        const unread = latestNotifications.filter((notification) => !notification.read && !shownNotificationIds.current.has(notification._id));
+        unread.slice(0, 5).forEach((notification) => {
+          shownNotificationIds.current.add(notification._id);
+          toast.success(notification.message, { id: `notification-${notification._id}`, duration: 7000 });
+        });
+      } catch {
+        // A temporary notification request failure should not interrupt the dashboard.
+      }
+    };
+    showNewNotifications();
+    const interval = window.setInterval(showNewNotifications, 20000);
+    return () => { mounted = false; window.clearInterval(interval); };
+  }, []);
+  useEffect(() => {
+    if (!notificationsOpen) return undefined;
+    const timer = window.setTimeout(() => setNotificationsOpen(false), 12000);
+    return () => window.clearTimeout(timer);
+  }, [notificationsOpen]);
   useEffect(() => {
     localStorage.setItem("rla-theme", darkMode ? "dark" : "light");
   }, [darkMode]);
@@ -511,8 +542,23 @@ function Dashboard({ user, onLogout }) {
   const navigate = (nextPage, event) => {
     event?.preventDefault();
     setPage(nextPage);
+    setSelectedTransferId("");
     if (window.innerWidth < 860) setSidebarCollapsed(true);
   };
+  const openNotification = async (notification) => {
+    setNotificationsOpen(false);
+    if (!notification.read) {
+      setNotifications((all) => all.map((item) => item._id === notification._id ? { ...item, read: true } : item));
+      request(`/transfers/notifications/${notification._id}/read`, { method: "PATCH" }).catch(() => {});
+    }
+    const transfer = notification.transfer;
+    if (!transfer?._id) return;
+    const isIncoming = user.location === transfer.destinationLocation && user.location?.trim().toLowerCase() !== "head office";
+    setSelectedTransferId(transfer._id);
+    setPage(isIncoming ? "incoming" : "transport");
+    if (window.innerWidth < 860) setSidebarCollapsed(true);
+  };
+  const unreadCount = notifications.filter((notification) => !notification.read).length;
   return (
     <main className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${darkMode ? "theme-dark" : ""}`}>
       <aside>
@@ -601,9 +647,22 @@ function Dashboard({ user, onLogout }) {
               </h1>
             </div>
           </div>
+          <div className="header-actions">
+          <div className="notification-menu">
+            <button className="notification-bell" onClick={() => setNotificationsOpen((open) => !open)} title="Notifications" aria-label="Notifications">
+              <FaBell />{unreadCount > 0 && <b>{unreadCount > 9 ? "9+" : unreadCount}</b>}
+            </button>
+            {notificationsOpen && <section className="notification-panel">
+              <div className="notification-panel-title"><strong>Notifications</strong><span>Last 2 days</span></div>
+              {notifications.length ? notifications.map((notification) => <button key={notification._id} className={`notification-item ${notification.read ? "" : "unread"}`} onClick={() => openNotification(notification)}>
+                <span>{notification.message}</span><small>{new Date(notification.createdAt).toLocaleString()}</small>
+              </button>) : <p className="notification-empty">No recent notifications.</p>}
+            </section>}
+          </div>
           <button className="theme-toggle" onClick={() => setDarkMode(!darkMode)} title={darkMode ? "Use light mode" : "Use dark mode"}>
             {darkMode ? <FaSun /> : <FaMoon />}<span>{darkMode ? "Light" : "Dark"}</span>
           </button>
+          </div>
           <button className="logout-mobile" onClick={onLogout}>
             <LogOut />
           </button>
@@ -614,8 +673,8 @@ function Dashboard({ user, onLogout }) {
           )}
         </header>
         {error && <div className="error">{error}</div>}
-        {page === "transport" && <TransportPage user={user} locations={locations} />}
-        {page === "incoming" && <TransportPage user={user} locations={locations} incoming />}
+        {page === "transport" && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} />}
+        {page === "incoming" && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} />}
         {page === "dashboard" && (
           <div className="stats">
             <article>
@@ -823,10 +882,9 @@ function App() {
     localStorage.clear();
     setSession(null);
   };
-  return session ? (
-    <Dashboard user={session} onLogout={logout} />
-  ) : (
-    <Login onLogin={login} />
-  );
+  return <>
+    <Toaster position="top-right" toastOptions={{ style: { borderRadius: "12px", background: "#14243b", color: "#fff", maxWidth: "420px" }, success: { iconTheme: { primary: "#62d5b3", secondary: "#14243b" } } }} />
+    {session ? <Dashboard user={session} onLogout={logout} /> : <Login onLogin={login} />}
+  </>;
 }
 createRoot(document.getElementById("root")).render(<App />);

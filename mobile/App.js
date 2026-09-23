@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
 
 const API = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:5000/api';
 const colors = { navy: '#14243b', teal: '#167c67', pale: '#f5f8fa', ink: '#172138', muted: '#718096', line: '#e4eaf0' };
@@ -34,8 +35,28 @@ function AddUserModal({ locations, onClose, onCreated }) {
 
 function Dashboard({ user, onLogout }) {
   const [allLocations, setAllLocations] = useState([]); const [users, setUsers] = useState([]); const [loading, setLoading] = useState(true); const [view, setView] = useState('locations'); const [adding, setAdding] = useState(false);
+  const shownNotificationIds = useRef(new Set());
   const isAdmin = user.role === 'super_admin';
   useEffect(() => { Promise.all([api('/locations'), ...(isAdmin ? [api('/users')] : [])]).then(([locations, members = []]) => { setAllLocations(locations); setUsers(members); }).catch(e => Alert.alert('Connection issue', e.message)).finally(() => setLoading(false)); }, []);
+  useEffect(() => {
+    let mounted = true;
+    const showNewNotifications = async () => {
+      try {
+        const notifications = await api('/transfers/notifications');
+        if (!mounted) return;
+        notifications.filter(notification => !notification.read && !shownNotificationIds.current.has(notification._id)).slice(0, 5).forEach(notification => {
+          shownNotificationIds.current.add(notification._id);
+          Toast.show({ type: 'success', text1: 'RLA Operations update', text2: notification.message, visibilityTime: 7000 });
+          api(`/transfers/notifications/${notification._id}/read`, { method: 'PATCH' }).catch(() => {});
+        });
+      } catch {
+        // The dashboard continues normally if notification polling is temporarily unavailable.
+      }
+    };
+    showNewNotifications();
+    const interval = setInterval(showNewNotifications, 20000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
   const toggleUser = async member => { try { const updated = await api(`/users/${member._id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive: !member.isActive }) }); setUsers(all => all.map(x => x._id === updated._id ? updated : x)); } catch (e) { Alert.alert('Cannot update account', e.message); } };
   const locations = isAdmin ? allLocations : allLocations.filter(item => item.name === user.location);
   const data = view === 'users' ? users : locations;
@@ -48,7 +69,7 @@ export default function App() {
   const login = async result => { await AsyncStorage.multiSet([['token', result.token], ['user', JSON.stringify(result.user)]]); setUser(result.user); };
   const logout = async () => { await AsyncStorage.multiRemove(['token', 'user']); setUser(null); };
   if (checking) return <View style={styles.loader}><ActivityIndicator color={colors.teal} /></View>;
-  return user ? <Dashboard user={user} onLogout={logout} /> : <Login onLogin={login} />;
+  return <>{user ? <Dashboard user={user} onLogout={logout} /> : <Login onLogin={login} />}<Toast /></>;
 }
 
 const styles = StyleSheet.create({

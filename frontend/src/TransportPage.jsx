@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   FaArrowRight,
   FaBoxOpen,
@@ -23,11 +23,14 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(data?.message || "Request failed.");
   return data;
 }
-export default function TransportPage({ user, locations, incoming = false }) {
+export default function TransportPage({ user, locations, incoming = false, highlightTransferId = "" }) {
   const [transfers, setTransfers] = useState([]),
     [destinationLocation, setDestination] = useState(""),
     [items, setItems] = useState([{ name: "", quantity: 1 }]),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [creating, setCreating] = useState(false),
+    [workingTransferId, setWorkingTransferId] = useState("");
+  const createInFlight = useRef(false);
   const headOffice = user.location?.trim().toLowerCase() === "head office";
   const load = async () => {
     try {
@@ -41,10 +44,13 @@ export default function TransportPage({ user, locations, incoming = false }) {
   }, []);
   const create = async (event) => {
     event.preventDefault();
+    if (createInFlight.current) return;
+    createInFlight.current = true;
+    setCreating(true);
     try {
       await api("/transfers", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({ destinationLocation, items }),
       });
       setDestination("");
@@ -52,18 +58,26 @@ export default function TransportPage({ user, locations, incoming = false }) {
       await load();
     } catch (e) {
       setError(e.message);
+    } finally {
+      createInFlight.current = false;
+      setCreating(false);
     }
   };
   const action = async (id, type) => {
+    if (workingTransferId) return;
+    setWorkingTransferId(id);
     try {
       await api(`/transfers/${id}/${type}`, { method: "POST" });
       await load();
     } catch (e) {
       setError(e.message);
+    } finally {
+      setWorkingTransferId("");
     }
   };
   const uploadInvoice = async (id, file) => {
-    if (!file) return;
+    if (!file || workingTransferId) return;
+    setWorkingTransferId(id);
     const data = new FormData();
     data.append("invoice", file);
     try {
@@ -71,6 +85,8 @@ export default function TransportPage({ user, locations, incoming = false }) {
       await load();
     } catch (e) {
       setError(e.message);
+    } finally {
+      setWorkingTransferId("");
     }
   };
   const visible = incoming
@@ -178,8 +194,8 @@ export default function TransportPage({ user, locations, incoming = false }) {
             >
               <FaPlus /> Add another item
             </button>
-            <button type="submit" className="send-transfer">
-              <FaTruckFast /> Send request to Head Office
+            <button type="submit" className="send-transfer" disabled={creating}>
+              <FaTruckFast /> {creating ? "Sending request…" : "Send request to Head Office"}
             </button>
           </form>
         </section>
@@ -209,7 +225,7 @@ export default function TransportPage({ user, locations, incoming = false }) {
         </div>
         <div className="transfer-list">
           {visible.map((transfer) => (
-            <article className="transfer-card" key={transfer._id}>
+            <article className={`transfer-card ${highlightTransferId === transfer._id ? "transfer-highlight" : ""}`} key={transfer._id}>
               <div className="transfer-card-top">
                 <div className="route-icon">
                   <FaTruckFast />
@@ -290,7 +306,7 @@ export default function TransportPage({ user, locations, incoming = false }) {
                   ["awaiting_head_office", "invoice_uploaded"].includes(
                     transfer.status,
                   ) && (
-                    <label className="invoice-upload">
+                    <label className={`invoice-upload ${workingTransferId === transfer._id ? "is-busy" : ""}`}>
                       <FaCloudArrowUp />
                       <span>
                         {transfer.invoiceFile
@@ -301,6 +317,7 @@ export default function TransportPage({ user, locations, incoming = false }) {
                       <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"
+                        disabled={Boolean(workingTransferId)}
                         onChange={(e) =>
                           uploadInvoice(transfer._id, e.target.files?.[0])
                         }
@@ -309,13 +326,13 @@ export default function TransportPage({ user, locations, incoming = false }) {
                   )}
                 {transfer.sourceLocation === user.location &&
                   transfer.status === "invoice_uploaded" && (
-                    <button onClick={() => action(transfer._id, "dispatch")}>
-                      <FaTruckFast /> Confirm dispatch
+                  <button disabled={Boolean(workingTransferId)} onClick={() => action(transfer._id, "dispatch")}>
+                    <FaTruckFast /> {workingTransferId === transfer._id ? "Working…" : "Confirm dispatch"}
                     </button>
                   )}
                 {incoming && transfer.status === "awaiting_destination" && (
-                  <button onClick={() => action(transfer._id, "receive")}>
-                    <FaCheck /> Accept received items
+                  <button disabled={Boolean(workingTransferId)} onClick={() => action(transfer._id, "receive")}>
+                    <FaCheck /> {workingTransferId === transfer._id ? "Working…" : "Accept received items"}
                   </button>
                 )}
               </div>
