@@ -1,6 +1,6 @@
 const enabled = () => ['true', '1', 'yes'].includes((process.env.TEXTWARE_SMS_ENABLED || '').toLowerCase());
 
-const normalizeSriLankanNumber = value => {
+export const normalizeSriLankanNumber = value => {
   const digits = String(value || '').replace(/\D/g, '');
   if (digits.startsWith('0') && digits.length === 10) return `94${digits.slice(1)}`;
   return digits;

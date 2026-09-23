@@ -26,11 +26,16 @@ async function api(path, options = {}) {
 export default function TransportPage({ user, locations, incoming = false, highlightTransferId = "" }) {
   const [transfers, setTransfers] = useState([]),
     [destinationLocation, setDestination] = useState(""),
-    [items, setItems] = useState([{ name: "", quantity: 1 }]),
+    [items, setItems] = useState([{ itemCode: "", quantity: 1 }]),
     [error, setError] = useState(""),
     [creating, setCreating] = useState(false),
     [workingTransferId, setWorkingTransferId] = useState("");
+  const [requestMode, setRequestMode] = useState("manual");
   const createInFlight = useRef(false);
+  const openSpreadsheet = () => {
+    setRequestMode("excel");
+    setItems((current) => current.length >= 5 ? current : [...current, ...Array.from({ length: 5 - current.length }, () => ({ itemCode: "", quantity: 1 }))]);
+  };
   const headOffice = user.location?.trim().toLowerCase() === "head office";
   const load = async () => {
     try {
@@ -45,16 +50,20 @@ export default function TransportPage({ user, locations, incoming = false, highl
   const create = async (event) => {
     event.preventDefault();
     if (createInFlight.current) return;
+    const validItems = items
+      .filter((item) => item.itemCode?.trim() && Number(item.quantity) >= 1)
+      .map((item) => ({ ...item, itemCode: item.itemCode.trim() }));
+    if (!validItems.length) { setError("Enter at least one item code and quantity."); return; }
     createInFlight.current = true;
     setCreating(true);
     try {
       await api("/transfers", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ destinationLocation, items }),
+        body: JSON.stringify({ destinationLocation, items: validItems }),
       });
       setDestination("");
-      setItems([{ name: "", quantity: 1 }]);
+      setItems([{ itemCode: "", quantity: 1 }]);
       await load();
     } catch (e) {
       setError(e.message);
@@ -119,6 +128,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
             <p>Choose a destination and list every item in this shipment.</p>
           </div>
           <form onSubmit={create}>
+            <div className="request-mode-tabs"><button type="button" className={requestMode === "manual" ? "active" : ""} onClick={() => setRequestMode("manual")}>Manual entry</button><button type="button" className={requestMode === "excel" ? "active" : ""} onClick={openSpreadsheet}>Spreadsheet</button></div>
             <label>
               Destination location
               <select
@@ -140,20 +150,20 @@ export default function TransportPage({ user, locations, incoming = false, highl
                   ))}
               </select>
             </label>
-            <div className="items-form-head">
-              <span>Item name</span>
-              <span>Quantity</span>
+            {requestMode === "excel" && <p className="spreadsheet-help">Enter or update item codes and quantities directly in the sheet.</p>}
+            <div className={`items-form-head ${requestMode === "excel" ? "spreadsheet-head" : ""}`}>
+              {requestMode === "excel" && <span>#</span>}<span>Item code</span><span>Quantity</span>
             </div>
             {items.map((item, index) => (
-              <div className="item-row" key={index}>
+              <div className={`item-row ${requestMode === "excel" ? "spreadsheet-row" : ""}`} key={index}>
+                {requestMode === "excel" && <span className="sheet-row-number">{index + 1}</span>}
                 <input
-                  placeholder="Enter item name"
-                  required
-                  value={item.name}
+                  placeholder="Enter item code"
+                  value={item.itemCode}
                   onChange={(e) =>
                     setItems(
                       items.map((x, i) =>
-                        i === index ? { ...x, name: e.target.value } : x,
+                        i === index ? { ...x, itemCode: e.target.value } : x,
                       ),
                     )
                   }
@@ -165,8 +175,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
                   onChange={(e) =>
                     setItems(
                       items.map((x, i) =>
-                        i === index
-                          ? { ...x, quantity: Number(e.target.value) }
+                        i === index ? { ...x, quantity: Number(e.target.value) }
                           : x,
                       ),
                     )
@@ -190,9 +199,9 @@ export default function TransportPage({ user, locations, incoming = false, highl
             <button
               type="button"
               className="add-item"
-              onClick={() => setItems([...items, { name: "", quantity: 1 }])}
+              onClick={() => setItems([...items, { itemCode: "", quantity: 1 }])}
             >
-              <FaPlus /> Add another item
+              <FaPlus /> {requestMode === "excel" ? "Add spreadsheet row" : "Add another item"}
             </button>
             <button type="submit" className="send-transfer" disabled={creating}>
               <FaTruckFast /> {creating ? "Sending request…" : "Send request to Head Office"}
@@ -250,8 +259,8 @@ export default function TransportPage({ user, locations, incoming = false, highl
                   <FaBoxOpen /> Items in this request
                 </div>
                 {transfer.items.map((item, index) => (
-                  <div className="transfer-item" key={`${item.name}-${index}`}>
-                    <span>{item.name}</span>
+                  <div className="transfer-item" key={`${item.itemCode || item.name}-${index}`}>
+                    <span>{item.itemCode || item.name}</span>
                     <strong>{item.quantity}</strong>
                   </div>
                 ))}

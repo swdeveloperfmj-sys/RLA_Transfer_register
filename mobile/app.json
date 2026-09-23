@@ -5,8 +5,27 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "splash": { "backgroundColor": "#14243b" },
-    "android": { "package": "com.rla.operations", "usesCleartextTraffic": true },
-    "ios": { "bundleIdentifier": "com.rla.operations" }
+    "icon": "./assets/logo.png",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#14243b"
+    },
+    "android": {
+      "package": "com.rla.operations",
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#14243b"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.rla.operations"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "12f502c1-1c14-4701-8102-0b14b7f3fc4f"
+      }
+    }
   }
 }
