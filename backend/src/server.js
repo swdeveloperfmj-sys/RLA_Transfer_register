@@ -18,6 +18,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
+app.get('/', (_req, res) => res.json({ service: 'RLA Transfer API', status: 'ok', health: '/api/health' }));
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api/locations', locationRoutes);
 app.use('/api/roles', roleRoutes);
@@ -27,3 +28,5 @@ app.use('/api/users', userRoutes);
 app.use((err, _req, res, _next) => { console.error(err); res.status(500).json({ message: 'An unexpected error occurred.' }); });
 
 mongoose.connect(process.env.MONGODB_URI).then(() => app.listen(process.env.PORT || 5000, () => console.log('API running'))).catch(error => { console.error('MongoDB connection failed:', error.message); process.exit(1); });
+
+export default app;
