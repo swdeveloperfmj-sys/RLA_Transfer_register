@@ -111,7 +111,7 @@ function Login({ onLogin }) {
           </h1>
           <p>Secure, location-based access for your people and operations.</p>
         </div>
-        <div className="brand-footer">© 2026 RLA Group · Internal systems</div>
+        <div className="brand-footer">© 2026 PCS Develop · Internal systems</div>
       </section>
       <section className="login-card">
         <div className="mobile-logo">
