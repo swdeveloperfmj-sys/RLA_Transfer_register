@@ -19,6 +19,7 @@ import {
   FaEyeSlash,
   FaBell,
   FaFileInvoice,
+  FaMobileScreenButton,
 } from "react-icons/fa6";
 import "./styles.css";
 import TransportPage from "./TransportPage.jsx";
@@ -743,7 +744,7 @@ function Dashboard({ user, onLogout }) {
             </div>
           </div>
           <div className="header-actions">
-          {"PushManager" in window && <button className="phone-alerts" onClick={enablePhoneAlerts} disabled={pushBusy} title="Enable phone notifications"><FaBell /><span>{pushBusy ? "Enabling…" : "Phone alerts"}</span></button>}
+          {"PushManager" in window && <button className="phone-alerts" onClick={enablePhoneAlerts} disabled={pushBusy} title="Enable phone notifications" aria-label="Enable phone notifications"><FaMobileScreenButton /></button>}
           <div className="notification-menu">
             <button className="notification-bell" onClick={() => setNotificationsOpen((open) => !open)} title="Notifications" aria-label="Notifications">
               <FaBell />{unreadCount > 0 && <b>{unreadCount > 9 ? "9+" : unreadCount}</b>}
