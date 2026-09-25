@@ -49,7 +49,7 @@ export const notifyLocationUsers = async ({ location, message, subject = 'RLA Op
       // responsible users for Head Office requests.
       ...(location?.trim().toLowerCase() === 'head office' ? [{ role: 'super_admin' }] : [])
     ]
-  }).select('name email mobileNumber');
+  }).select('name email mobileNumber location role');
   await Promise.all(recipients.map(async recipient => {
     await Notification.create({ user: recipient._id, location, message, transfer });
     await Promise.all([
