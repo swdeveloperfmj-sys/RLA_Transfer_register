@@ -9,7 +9,7 @@ import { sendNotificationEmail } from '../services/notifications.js';
 
 const router = Router();
 const publicUser = user => ({ id: user._id, name: user.name, email: user.email, role: user.role, location: user.location, mobileNumber: user.mobileNumber });
-const tokenFor = id => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '8h' });
+const tokenFor = id => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '5d' });
 const hashCode = code => createHash('sha256').update(code).digest('hex');
 
 const sendSuperAdminOtp = async user => {
