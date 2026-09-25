@@ -586,7 +586,7 @@ function Dashboard({ user, onLogout }) {
     }
     const transfer = notification.transfer;
     if (!transfer?._id) return;
-    const isIncoming = user.location === transfer.destinationLocation && user.location?.trim().toLowerCase() !== "head office";
+    const isIncoming = user.location === transfer.destinationLocation;
     setSelectedTransferId(transfer._id);
     setPage(isIncoming ? "incoming" : "transport");
     if (window.innerWidth < 860) setSidebarCollapsed(true);
@@ -618,8 +618,8 @@ function Dashboard({ user, onLogout }) {
             <ShieldCheck />
             <span>Dashboard</span>
           </a>
-          <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>{user.location?.trim().toLowerCase() === "head office" ? "Invoice Requests" : "Transport"}</span></a>
-          {user.location?.trim().toLowerCase() !== "head office" && <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span></a>}
+          <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transport</span></a>
+          <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span></a>
           {user.role === "super_admin" && (
             <>
               <span className="nav-caption">MANAGEMENT</span>

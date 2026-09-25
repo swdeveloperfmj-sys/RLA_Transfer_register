@@ -37,8 +37,8 @@ router.patch('/notifications/:id/read', async (req, res) => {
 router.post('/', async (req, res) => {
   const { destinationLocation, items, notes = '' } = req.body;
   const idempotencyKey = req.get('Idempotency-Key');
-  if (!req.user.location || isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only non-Head Office location managers can create transport requests.' });
-  if (!destinationLocation || isHeadOffice(destinationLocation) || destinationLocation === req.user.location) return res.status(400).json({ message: 'Select another non-Head Office destination location.' });
+  if (!req.user.location) return res.status(403).json({ message: 'Your account needs an assigned location before you can create transport requests.' });
+  if (!destinationLocation || destinationLocation === req.user.location) return res.status(400).json({ message: 'Select another destination location.' });
   if (!await Location.exists({ name: destinationLocation, isActive: true }) || !Array.isArray(items) || !items.length || items.some(item => !item.itemCode || Number(item.quantity) < 1)) return res.status(400).json({ message: 'Add at least one valid item code and destination.' });
   if (idempotencyKey) {
     const existing = await Transfer.findOne({ requestedBy: req.user._id, idempotencyKey });
