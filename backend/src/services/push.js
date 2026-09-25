@@ -13,7 +13,8 @@ export const sendPushNotification = async ({ recipient, subject, message, transf
   if (!configure()) return;
   const transferDetails = transfer?.status ? transfer : await Transfer.findById(transfer).select('sourceLocation destinationLocation status');
   const subscriptions = await PushSubscription.find({ user: recipient._id });
-  const target = transferDetails?.destinationLocation === recipient.location ? 'incoming' : recipient.location?.trim().toLowerCase() === 'head office' && ['awaiting_head_office', 'invoice_uploaded'].includes(transferDetails?.status) ? 'invoiceRequests' : 'transport';
+  const isHeadOfficeRecipient = recipient.location?.trim().toLowerCase() === 'head office' || recipient.role === 'super_admin';
+  const target = transferDetails?.destinationLocation === recipient.location ? 'incoming' : isHeadOfficeRecipient && ['awaiting_head_office', 'invoice_uploaded'].includes(transferDetails?.status) ? 'invoiceRequests' : 'transport';
   await Promise.all(subscriptions.map(async subscription => {
     try {
       await webpush.sendNotification(subscription.toObject(), JSON.stringify({ title: subject, body: message, url: `/?page=${target}&transfer=${transferDetails?._id || ''}` }));
