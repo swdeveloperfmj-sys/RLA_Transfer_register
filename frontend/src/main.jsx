@@ -67,6 +67,11 @@ const request = async (path, options = {}) => {
   if (!response.ok) throw new Error(data.message || "Request failed.");
   return data;
 };
+const urlBase64ToUint8Array = (value) => {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+};
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -418,7 +423,7 @@ function Dashboard({ user, onLogout }) {
   const [error, setError] = useState("");
   const [newLocation, setNewLocation] = useState("");
   const [newRole, setNewRole] = useState("");
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState(() => new URLSearchParams(window.location.search).get("page") || "dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => window.innerWidth < 860,
   );
@@ -427,7 +432,8 @@ function Dashboard({ user, onLogout }) {
   );
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [selectedTransferId, setSelectedTransferId] = useState("");
+  const [selectedTransferId, setSelectedTransferId] = useState(() => new URLSearchParams(window.location.search).get("transfer") || "");
+  const [pushBusy, setPushBusy] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const shownNotificationIds = useRef(new Set());
   useEffect(() => {
@@ -475,6 +481,24 @@ function Dashboard({ user, onLogout }) {
   useEffect(() => {
     localStorage.setItem("rla-theme", darkMode ? "dark" : "light");
   }, [darkMode]);
+  const enablePhoneAlerts = async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !window.isSecureContext) {
+      setError("Phone notifications require the installed app to run over HTTPS.");
+      return;
+    }
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") throw new Error("Allow notifications in your phone/browser settings to enable alerts.");
+      const { publicKey } = await request("/transfers/push/public-key");
+      if (!publicKey) throw new Error("Phone notifications are not configured on the server yet.");
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+      await request("/transfers/push/subscribe", { method: "POST", body: JSON.stringify(subscription) });
+      toast.success("Phone notifications are enabled.");
+    } catch (error) { setError(error.message || "Could not enable phone notifications."); }
+    finally { setPushBusy(false); }
+  };
   useEffect(() => {
     const syncSidebarForViewport = () => {
       if (window.innerWidth < 860) setSidebarCollapsed(true);
@@ -719,6 +743,7 @@ function Dashboard({ user, onLogout }) {
             </div>
           </div>
           <div className="header-actions">
+          {"PushManager" in window && <button className="phone-alerts" onClick={enablePhoneAlerts} disabled={pushBusy} title="Enable phone notifications"><FaBell /><span>{pushBusy ? "Enabling…" : "Phone alerts"}</span></button>}
           <div className="notification-menu">
             <button className="notification-bell" onClick={() => setNotificationsOpen((open) => !open)} title="Notifications" aria-label="Notifications">
               <FaBell />{unreadCount > 0 && <b>{unreadCount > 9 ? "9+" : unreadCount}</b>}

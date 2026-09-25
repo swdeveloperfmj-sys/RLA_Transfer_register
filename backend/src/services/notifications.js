@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import { sendTextwareSms } from './sms.js';
+import { sendPushNotification } from './push.js';
 
 let transporter;
 
@@ -53,7 +54,8 @@ export const notifyLocationUsers = async ({ location, message, subject = 'RLA Op
     await Notification.create({ user: recipient._id, location, message, transfer });
     await Promise.all([
       sendNotificationEmail({ recipient, subject, message }).catch(error => console.error(`Could not send notification email to ${recipient.email}:`, error.message)),
-      sendTextwareSms({ mobileNumber: recipient.mobileNumber, message: `RLA: ${message}` }).catch(error => console.error(`Could not send SMS to ${recipient.name}:`, error.message))
+      sendTextwareSms({ mobileNumber: recipient.mobileNumber, message: `RLA: ${message}` }).catch(error => console.error(`Could not send SMS to ${recipient.name}:`, error.message)),
+      sendPushNotification({ recipient, subject, message, transfer }).catch(error => console.error(`Could not send push notification to ${recipient.name}:`, error.message))
     ]);
   }));
   return recipients.length;

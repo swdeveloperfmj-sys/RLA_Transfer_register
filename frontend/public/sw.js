@@ -20,3 +20,23 @@ self.addEventListener('fetch', (event) => {
     }
   })());
 });
+
+self.addEventListener('push', (event) => {
+  const data = event.data?.json() || {};
+  event.waitUntil(self.registration.showNotification(data.title || 'RLA Operations', {
+    body: data.body || 'You have a new update.',
+    icon: '/logo.png',
+    badge: '/logo.png',
+    data: { url: data.url || '/' }
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (windows) => {
+    const appWindow = windows[0];
+    if (appWindow) { await appWindow.navigate(target); return appWindow.focus(); }
+    return clients.openWindow(target);
+  }));
+});
