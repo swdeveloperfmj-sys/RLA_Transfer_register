@@ -1,5 +1,6 @@
 import webpush from 'web-push';
 import PushSubscription from '../models/PushSubscription.js';
+import Transfer from '../models/Transfer.js';
 
 const configured = () => Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 const configure = () => {
@@ -10,11 +11,12 @@ const configure = () => {
 export const vapidPublicKey = () => process.env.VAPID_PUBLIC_KEY || '';
 export const sendPushNotification = async ({ recipient, subject, message, transfer }) => {
   if (!configure()) return;
+  const transferDetails = transfer?.status ? transfer : await Transfer.findById(transfer).select('sourceLocation destinationLocation status');
   const subscriptions = await PushSubscription.find({ user: recipient._id });
-  const target = transfer?.destinationLocation === recipient.location ? 'incoming' : recipient.location?.trim().toLowerCase() === 'head office' && ['awaiting_head_office', 'invoice_uploaded'].includes(transfer?.status) ? 'invoiceRequests' : 'transport';
+  const target = transferDetails?.destinationLocation === recipient.location ? 'incoming' : recipient.location?.trim().toLowerCase() === 'head office' && ['awaiting_head_office', 'invoice_uploaded'].includes(transferDetails?.status) ? 'invoiceRequests' : 'transport';
   await Promise.all(subscriptions.map(async subscription => {
     try {
-      await webpush.sendNotification(subscription.toObject(), JSON.stringify({ title: subject, body: message, url: `/?page=${target}&transfer=${transfer?._id || ''}` }));
+      await webpush.sendNotification(subscription.toObject(), JSON.stringify({ title: subject, body: message, url: `/?page=${target}&transfer=${transferDetails?._id || ''}` }));
     } catch (error) {
       if (error.statusCode === 404 || error.statusCode === 410) await PushSubscription.deleteOne({ _id: subscription._id });
       else console.error('Could not send push notification:', error.message);
