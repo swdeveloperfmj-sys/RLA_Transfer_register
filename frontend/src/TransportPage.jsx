@@ -24,13 +24,15 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(data?.message || "Request failed.");
   return data;
 }
-export default function TransportPage({ user, locations, incoming = false, highlightTransferId = "" }) {
+export default function TransportPage({ user, locations, incoming = false, invoiceRequests = false, highlightTransferId = "" }) {
   const [transfers, setTransfers] = useState([]),
     [destinationLocation, setDestination] = useState(""),
     [items, setItems] = useState([{ itemCode: "", quantity: 1 }]),
     [error, setError] = useState(""),
     [creating, setCreating] = useState(false),
     [workingTransferId, setWorkingTransferId] = useState("");
+  const [holdRemarks, setHoldRemarks] = useState({});
+  const [holdSelections, setHoldSelections] = useState({});
   const [requestMode, setRequestMode] = useState("manual");
   const [sheetRows, setSheetRows] = useState([]);
   const createInFlight = useRef(false);
@@ -152,13 +154,39 @@ export default function TransportPage({ user, locations, incoming = false, highl
       setWorkingTransferId("");
     }
   };
+  const holdItems = async (transferId) => {
+    if (workingTransferId) return;
+    const itemIndexes = holdSelections[transferId] || [];
+    const holdRemark = holdRemarks[transferId] || "";
+    if (!itemIndexes.length || !holdRemark.trim()) {
+      setError("Select at least one item and add a hold remark.");
+      return;
+    }
+    setWorkingTransferId(transferId);
+    try {
+      await api(`/transfers/${transferId}/items/hold`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemIndexes, holdRemark }),
+      });
+      setHoldSelections((current) => ({ ...current, [transferId]: [] }));
+      setHoldRemarks((current) => ({ ...current, [transferId]: "" }));
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setWorkingTransferId("");
+    }
+  };
   const visible = incoming
     ? transfers.filter(
         (t) =>
           t.destinationLocation === user.location &&
           ["awaiting_destination", "completed"].includes(t.status),
       )
-    : transfers.filter((t) => t.sourceLocation === user.location || headOffice);
+    : invoiceRequests
+      ? transfers.filter((t) => ["awaiting_head_office", "invoice_uploaded"].includes(t.status))
+      : transfers.filter((t) => t.sourceLocation === user.location);
   const statusLabels = {
     awaiting_head_office: "Waiting for invoice",
     invoice_uploaded: "Invoice ready",
@@ -174,7 +202,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
   return (
     <section className="transport-page">
       {error && <div className="error">{error}</div>}
-      {!incoming && (
+      {!incoming && !invoiceRequests && (
         <section className="panel transport-form">
           <div className="panel-heading">
             <span className="eyebrow">NEW TRANSFER</span>
@@ -280,11 +308,13 @@ export default function TransportPage({ user, locations, incoming = false, highl
             <h2>
               {incoming
                 ? "Incoming transports"
-                : "Transport tracker"}
+                : invoiceRequests
+                  ? "Invoice requests"
+                  : "Transport tracker"}
             </h2>
             <p>
-              {headOffice
-                ? "Create and review transport requests, then attach the correct invoice."
+              {invoiceRequests
+                ? "Review location requests and attach the correct invoice."
                 : "Track each request from approval to delivery."}
             </p>
           </div>
@@ -321,11 +351,20 @@ export default function TransportPage({ user, locations, incoming = false, highl
                   <FaBoxOpen /> Items in this request
                 </div>
                 {transfer.items.map((item, index) => (
-                  <div className="transfer-item" key={`${item.itemCode || item.name}-${index}`}>
-                    <span>{item.itemCode || item.name}</span>
+                  <div className={`transfer-item ${item.reviewStatus === "held" ? "is-held" : ""}`} key={`${item.itemCode || item.name}-${index}`}>
+                    {headOffice && invoiceRequests && transfer.status !== "invoice_uploaded" && <input className="hold-select" type="checkbox" checked={(holdSelections[transfer._id] || []).includes(index)} disabled={Boolean(workingTransferId) || transfer.items.some((entry) => entry.reviewStatus === "held")} onChange={(event) => setHoldSelections((current) => ({ ...current, [transfer._id]: event.target.checked ? [...(current[transfer._id] || []), index] : (current[transfer._id] || []).filter((selected) => selected !== index) }))} aria-label={`Select ${item.itemCode || item.name} to hold`} />}
+                    <span>
+                      {item.itemCode || item.name}
+                      {item.reviewStatus === "held" && <small className="item-held">On hold: {item.holdRemark}</small>}
+                      {item.reviewStatus === "approved" && <small className="item-approved">Approved</small>}
+                    </span>
                     <strong>{item.quantity}</strong>
                   </div>
                 ))}
+                {headOffice && invoiceRequests && transfer.status !== "invoice_uploaded" && <div className="hold-batch-actions">
+                  <input value={holdRemarks[transfer._id] || ""} onChange={(event) => setHoldRemarks((current) => ({ ...current, [transfer._id]: event.target.value }))} placeholder="Hold remark for selected items" disabled={Boolean(workingTransferId) || transfer.items.some((item) => item.reviewStatus === "held")} />
+                  <button type="button" className="hold-item" disabled={Boolean(workingTransferId) || transfer.items.some((item) => item.reviewStatus === "held")} onClick={() => holdItems(transfer._id)}>Hold selected ({(holdSelections[transfer._id] || []).length})</button>
+                </div>}
               </div>
               <div className="transfer-progress">
                 <span
@@ -373,7 +412,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
                     <FaFileInvoice /> Invoice pending
                   </span>
                 )}
-                {headOffice &&
+                {headOffice && invoiceRequests &&
                   ["awaiting_head_office", "invoice_uploaded"].includes(
                     transfer.status,
                   ) && (
