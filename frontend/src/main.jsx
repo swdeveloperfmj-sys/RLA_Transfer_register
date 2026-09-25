@@ -18,9 +18,11 @@ import {
   FaEye,
   FaEyeSlash,
   FaBell,
+  FaFileInvoice,
 } from "react-icons/fa6";
 import "./styles.css";
 import TransportPage from "./TransportPage.jsx";
+import HoldReportPage from "./HoldReportPage.jsx";
 import rlaLogo from "../assets/logo.png";
 
 // React Icons design system aliases keep icon use consistent throughout the dashboard.
@@ -567,10 +569,27 @@ function Dashboard({ user, onLogout }) {
     users: "Users",
     roles: "Roles",
     transport: "Transport",
+    invoiceRequests: "Invoice Requests",
+    heldReports: "Held Item Reports",
     incoming: "Incoming transport",
+  };
+  const markTabNotificationsRead = (target) => {
+    const isHeadOfficeUser = user.location?.trim().toLowerCase() === "head office";
+    const matched = notifications.filter((notification) => {
+      if (notification.read || !notification.transfer) return false;
+      if (target === "incoming") return notification.transfer.destinationLocation === user.location;
+      if (target === "invoiceRequests") return isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer.status);
+      if (target === "transport") return notification.transfer.destinationLocation !== user.location && !(isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer.status));
+      return false;
+    });
+    if (!matched.length) return;
+    const matchedIds = new Set(matched.map((notification) => notification._id));
+    setNotifications((all) => all.map((notification) => matchedIds.has(notification._id) ? { ...notification, read: true } : notification));
+    matched.forEach((notification) => request(`/transfers/notifications/${notification._id}/read`, { method: "PATCH" }).catch(() => {}));
   };
   const navigate = (nextPage, event) => {
     event?.preventDefault();
+    markTabNotificationsRead(nextPage);
     setPage(nextPage);
     setSelectedTransferId("");
     if (window.innerWidth < 860) setSidebarCollapsed(true);
@@ -587,11 +606,25 @@ function Dashboard({ user, onLogout }) {
     const transfer = notification.transfer;
     if (!transfer?._id) return;
     const isIncoming = user.location === transfer.destinationLocation;
+    const isInvoiceRequest = user.location?.trim().toLowerCase() === "head office" && ["awaiting_head_office", "invoice_uploaded"].includes(transfer.status);
     setSelectedTransferId(transfer._id);
-    setPage(isIncoming ? "incoming" : "transport");
+    setPage(isIncoming ? "incoming" : isInvoiceRequest ? "invoiceRequests" : "transport");
     if (window.innerWidth < 860) setSidebarCollapsed(true);
   };
   const unreadCount = notifications.filter((notification) => !notification.read).length;
+  const isHeadOffice = user.location?.trim().toLowerCase() === "head office";
+  const updateDot = (target) => {
+    const notification = notifications.find((entry) => {
+      if (entry.read || !entry.transfer) return false;
+      if (target === "incoming") return entry.transfer.destinationLocation === user.location;
+      if (target === "invoiceRequests") return isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer.status);
+      return entry.transfer.destinationLocation !== user.location && !(isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer.status));
+    });
+    if (!notification) return "";
+    if (notification.transfer?.status === "awaiting_destination") return "red";
+    if (notification.transfer?.status === "awaiting_head_office") return "yellow";
+    return "green";
+  };
   return (
     <main className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${darkMode ? "theme-dark" : ""}`}>
       <aside onClick={() => sidebarCollapsed && setSidebarCollapsed(false)}>
@@ -618,8 +651,9 @@ function Dashboard({ user, onLogout }) {
             <ShieldCheck />
             <span>Dashboard</span>
           </a>
-          <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transport</span></a>
-          <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span></a>
+          <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transport</span>{updateDot("transport") && <i className={`nav-update-dot ${updateDot("transport")}`} />}</a>
+          {isHeadOffice && <a href="#invoice-requests" className={page === "invoiceRequests" ? "active" : ""} onClick={(event) => navigate("invoiceRequests", event)}><FaFileInvoice /><span>Invoice Requests</span>{updateDot("invoiceRequests") && <i className={`nav-update-dot ${updateDot("invoiceRequests")}`} />}</a>}
+          <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span>{updateDot("incoming") && <i className={`nav-update-dot ${updateDot("incoming")}`} />}</a>
           {user.role === "super_admin" && (
             <>
               <span className="nav-caption">MANAGEMENT</span>
@@ -643,6 +677,10 @@ function Dashboard({ user, onLogout }) {
               >
                 <ShieldCheck />
                 <span>Roles</span>
+              </a>
+              <a className={page === "heldReports" ? "active" : ""} onClick={() => navigate("heldReports")}>
+                <FaFileInvoice />
+                <span>Held Item Reports</span>
               </a>
             </>
           )}
@@ -707,7 +745,9 @@ function Dashboard({ user, onLogout }) {
         </header>
         {error && <div className="error">{error}</div>}
         {page === "transport" && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} />}
+        {page === "invoiceRequests" && <TransportPage user={user} locations={locations} invoiceRequests highlightTransferId={selectedTransferId} />}
         {page === "incoming" && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} />}
+        {user.role === "super_admin" && page === "heldReports" && <HoldReportPage />}
         {page === "dashboard" && (
           <div className="stats">
             <article>

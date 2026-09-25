@@ -4,7 +4,7 @@ import path from 'path';
 import Transfer from '../models/Transfer.js';
 import Notification from '../models/Notification.js';
 import Location from '../models/Location.js';
-import { protect } from '../middleware/auth.js';
+import { protect, superAdminOnly } from '../middleware/auth.js';
 import { notifyLocationUsers } from '../services/notifications.js';
 import { deleteInvoiceFromR2, r2Configured, uploadInvoiceToR2 } from '../services/r2.js';
 
@@ -34,6 +34,32 @@ router.patch('/notifications/:id/read', async (req, res) => {
   if (!notification) return res.status(404).json({ message: 'Notification not found.' });
   res.json(notification);
 });
+router.get('/reports/held-items', superAdminOnly, async (req, res) => {
+  const { from, to } = req.query;
+  const dateFilter = {};
+  if (from) dateFilter.$gte = new Date(`${from}T00:00:00.000Z`);
+  if (to) dateFilter.$lte = new Date(`${to}T23:59:59.999Z`);
+  const query = { 'items.reviewStatus': 'held' };
+  if (Object.keys(dateFilter).length) query['items.reviewedAt'] = dateFilter;
+  const transfers = await Transfer.find(query)
+    .populate('requestedBy', 'name email location')
+    .populate('items.reviewedBy', 'name email location')
+    .sort({ 'items.reviewedAt': -1 });
+  const heldItems = transfers.flatMap(transfer => transfer.items
+    .filter(item => item.reviewStatus === 'held' && (!dateFilter.$gte || item.reviewedAt >= dateFilter.$gte) && (!dateFilter.$lte || item.reviewedAt <= dateFilter.$lte))
+    .map(item => ({
+      transferId: transfer._id,
+      itemCode: item.itemCode,
+      quantity: item.quantity,
+      holdRemark: item.holdRemark,
+      heldAt: item.reviewedAt,
+      sourceLocation: transfer.sourceLocation,
+      destinationLocation: transfer.destinationLocation,
+      requestedBy: transfer.requestedBy,
+      heldBy: item.reviewedBy
+    })));
+  res.json(heldItems.sort((a, b) => new Date(b.heldAt) - new Date(a.heldAt)));
+});
 router.post('/', async (req, res) => {
   const { destinationLocation, items, notes = '' } = req.body;
   const idempotencyKey = req.get('Idempotency-Key');
@@ -55,6 +81,45 @@ router.post('/', async (req, res) => {
   }
   await notifyLocationUsers({ location: 'Head Office', subject: 'New transport request', message: `New transport request from ${req.user.location} to ${destinationLocation}.`, transfer: transfer._id });
   res.status(201).json(transfer);
+});
+router.patch('/:id/items/:index/review', async (req, res) => {
+  if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can review transport items.' });
+  const itemIndex = Number(req.params.index);
+  const { reviewStatus, holdRemark = '' } = req.body;
+  if (!Number.isInteger(itemIndex) || itemIndex < 0 || !['approved', 'held'].includes(reviewStatus)) return res.status(400).json({ message: 'Choose a valid item review decision.' });
+  if (reviewStatus === 'held' && !holdRemark.trim()) return res.status(400).json({ message: 'Add a remark before holding an item.' });
+  const transfer = await Transfer.findById(req.params.id); if (!transfer) return res.status(404).json({ message: 'Transfer not found.' });
+  if (!['awaiting_head_office', 'invoice_uploaded'].includes(transfer.status) || !transfer.items[itemIndex]) return res.status(409).json({ message: 'This item is not available for review.' });
+  const item = transfer.items[itemIndex];
+  item.reviewStatus = reviewStatus;
+  item.holdRemark = reviewStatus === 'held' ? holdRemark.trim() : '';
+  item.reviewedAt = new Date();
+  item.reviewedBy = req.user._id;
+  await transfer.save();
+  if (reviewStatus === 'held') {
+    await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Transport item placed on hold', message: `${item.itemCode} in the transport request to ${transfer.destinationLocation} is on hold. Remark: ${item.holdRemark}`, transfer: transfer._id });
+  }
+  res.json(transfer);
+});
+router.post('/:id/items/hold', async (req, res) => {
+  if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can hold transport items.' });
+  const { itemIndexes, holdRemark = '' } = req.body;
+  if (!Array.isArray(itemIndexes) || !itemIndexes.length || !holdRemark.trim()) return res.status(400).json({ message: 'Select at least one item and add a hold remark.' });
+  const uniqueIndexes = [...new Set(itemIndexes.map(Number))];
+  const transfer = await Transfer.findById(req.params.id); if (!transfer) return res.status(404).json({ message: 'Transfer not found.' });
+  if (!['awaiting_head_office', 'invoice_uploaded'].includes(transfer.status) || transfer.items.some(item => item.reviewStatus === 'held')) return res.status(409).json({ message: 'Items have already been placed on hold for this request.' });
+  if (uniqueIndexes.some(index => !Number.isInteger(index) || index < 0 || !transfer.items[index])) return res.status(400).json({ message: 'One or more selected items are invalid.' });
+  const heldAt = new Date();
+  uniqueIndexes.forEach(index => {
+    transfer.items[index].reviewStatus = 'held';
+    transfer.items[index].holdRemark = holdRemark.trim();
+    transfer.items[index].reviewedAt = heldAt;
+    transfer.items[index].reviewedBy = req.user._id;
+  });
+  await transfer.save();
+  const itemCodes = uniqueIndexes.map(index => transfer.items[index].itemCode).join(', ');
+  await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Transport items placed on hold', message: `${itemCodes} in the transport request to ${transfer.destinationLocation} are on hold. Remark: ${holdRemark.trim()}`, transfer: transfer._id });
+  res.json(transfer);
 });
 router.post('/:id/invoice', upload.single('invoice'), async (req, res) => {
   if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can upload invoices.' });

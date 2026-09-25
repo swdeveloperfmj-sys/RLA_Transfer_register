@@ -3,7 +3,15 @@ import mongoose from 'mongoose';
 const transferSchema = new mongoose.Schema({
   sourceLocation: { type: String, required: true },
   destinationLocation: { type: String, required: true },
-  items: [{ itemCode: { type: String, required: true, trim: true }, quantity: { type: Number, required: true, min: 1 }, notes: String }],
+  items: [{
+    itemCode: { type: String, required: true, trim: true },
+    quantity: { type: Number, required: true, min: 1 },
+    notes: String,
+    reviewStatus: { type: String, enum: ['pending', 'approved', 'held'], default: 'pending' },
+    holdRemark: { type: String, trim: true, default: '' },
+    reviewedAt: Date,
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  }],
   notes: String,
   requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   idempotencyKey: { type: String, trim: true, sparse: true },
