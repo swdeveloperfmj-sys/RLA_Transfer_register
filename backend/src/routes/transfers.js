@@ -7,6 +7,8 @@ import Location from '../models/Location.js';
 import { protect, superAdminOnly } from '../middleware/auth.js';
 import { notifyLocationUsers } from '../services/notifications.js';
 import { deleteInvoiceFromR2, r2Configured, uploadInvoiceToR2 } from '../services/r2.js';
+import PushSubscription from '../models/PushSubscription.js';
+import { vapidPublicKey } from '../services/push.js';
 
 const router = Router();
 const upload = multer({
@@ -17,6 +19,13 @@ const upload = multer({
 });
 const isHeadOffice = location => location?.trim().toLowerCase() === 'head office';
 router.use(protect);
+router.get('/push/public-key', (_req, res) => res.json({ publicKey: vapidPublicKey() }));
+router.post('/push/subscribe', async (req, res) => {
+  const { endpoint, keys } = req.body;
+  if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ message: 'A valid push subscription is required.' });
+  await PushSubscription.findOneAndUpdate({ endpoint }, { user: req.user._id, endpoint, keys }, { upsert: true, new: true, setDefaultsOnInsert: true });
+  res.status(201).json({ message: 'Phone notifications enabled.' });
+});
 router.get('/', async (req, res) => {
   const query = isHeadOffice(req.user.location) ? {} : { $or: [{ sourceLocation: req.user.location }, { destinationLocation: req.user.location }] };
   res.json(await Transfer.find(query).populate('requestedBy', 'name email').sort({ createdAt: -1 }));
