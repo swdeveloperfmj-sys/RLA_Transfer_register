@@ -174,7 +174,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
   return (
     <section className="transport-page">
       {error && <div className="error">{error}</div>}
-      {!incoming && !headOffice && (
+      {!incoming && (
         <section className="panel transport-form">
           <div className="panel-heading">
             <span className="eyebrow">NEW TRANSFER</span>
@@ -193,9 +193,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
                 <option value="">Select destination</option>
                 {locations
                   .filter(
-                    (l) =>
-                      l.name.trim().toLowerCase() !== "head office" &&
-                      l.name !== user.location,
+                    (l) => l.name !== user.location,
                   )
                   .map((l) => (
                     <option key={l._id} value={l.name}>
@@ -270,7 +268,7 @@ export default function TransportPage({ user, locations, incoming = false, highl
             </button>
             </>}
             <button type="submit" className="send-transfer" disabled={creating}>
-              <FaTruckFast /> {creating ? "Sending request…" : "Send request to Head Office"}
+              <FaTruckFast /> {creating ? "Sending request…" : "Send transport request"}
             </button>
           </form>
         </section>
@@ -282,13 +280,11 @@ export default function TransportPage({ user, locations, incoming = false, highl
             <h2>
               {incoming
                 ? "Incoming transports"
-                : headOffice
-                  ? "Invoice requests"
-                  : "Transport tracker"}
+                : "Transport tracker"}
             </h2>
             <p>
               {headOffice
-                ? "Review requests and attach the correct invoice."
+                ? "Create and review transport requests, then attach the correct invoice."
                 : "Track each request from approval to delivery."}
             </p>
           </div>
