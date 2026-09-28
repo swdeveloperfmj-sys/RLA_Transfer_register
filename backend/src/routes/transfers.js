@@ -4,6 +4,7 @@ import path from 'path';
 import Transfer from '../models/Transfer.js';
 import Notification from '../models/Notification.js';
 import Location from '../models/Location.js';
+import LocationSequence from '../models/LocationSequence.js';
 import { protect, superAdminOnly } from '../middleware/auth.js';
 import { notifyLocationUsers } from '../services/notifications.js';
 import { deleteInvoiceFromR2, r2Configured, uploadInvoiceToR2 } from '../services/r2.js';
@@ -44,11 +45,12 @@ router.patch('/notifications/:id/read', async (req, res) => {
   res.json(notification);
 });
 router.get('/reports/held-items', superAdminOnly, async (req, res) => {
-  const { from, to } = req.query;
+  const { from, to, location } = req.query;
   const dateFilter = {};
   if (from) dateFilter.$gte = new Date(`${from}T00:00:00.000Z`);
   if (to) dateFilter.$lte = new Date(`${to}T23:59:59.999Z`);
   const query = { 'items.reviewStatus': 'held' };
+  if (location) query.sourceLocation = location;
   if (Object.keys(dateFilter).length) query['items.reviewedAt'] = dateFilter;
   const transfers = await Transfer.find(query)
     .populate('requestedBy', 'name email location')
@@ -69,6 +71,27 @@ router.get('/reports/held-items', superAdminOnly, async (req, res) => {
     })));
   res.json(heldItems.sort((a, b) => new Date(b.heldAt) - new Date(a.heldAt)));
 });
+router.get('/reports/transactions', superAdminOnly, async (req, res) => {
+  const { from, to, location } = req.query;
+  const query = {};
+  if (from || to) {
+    query.createdAt = {};
+    if (from) query.createdAt.$gte = new Date(`${from}T00:00:00.000Z`);
+    if (to) query.createdAt.$lte = new Date(`${to}T23:59:59.999Z`);
+  }
+  if (location) query.sourceLocation = location;
+  const transfers = await Transfer.find(query).sort({ createdAt: -1 });
+  res.json(transfers.map(transfer => ({
+    id: transfer._id,
+    referenceNumber: transfer.referenceNumber || String(transfer._id),
+    createdAt: transfer.createdAt,
+    sourceLocation: transfer.sourceLocation,
+    destinationLocation: transfer.destinationLocation,
+    sentItems: transfer.items.map(item => ({ itemCode: item.itemCode, quantity: item.quantity })),
+    heldItems: transfer.items.filter(item => item.reviewStatus === 'held').map(item => ({ itemCode: item.itemCode, quantity: item.quantity, remark: item.holdRemark })),
+    status: transfer.status
+  })));
+});
 router.post('/', async (req, res) => {
   const { destinationLocation, items, notes = '' } = req.body;
   const idempotencyKey = req.get('Idempotency-Key');
@@ -81,7 +104,11 @@ router.post('/', async (req, res) => {
   }
   let transfer;
   try {
-    transfer = await Transfer.create({ sourceLocation: req.user.location, destinationLocation, items, notes, requestedBy: req.user._id, idempotencyKey });
+    const source = await Location.findOne({ name: req.user.location, isActive: true });
+    if (!source?.code) return res.status(400).json({ message: 'Your location needs a code before you can create transport requests.' });
+    const sequence = await LocationSequence.findOneAndUpdate({ locationCode: source.code }, { $inc: { value: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+    const referenceNumber = `${source.code}-${String(sequence.value).padStart(5, '0')}`;
+    transfer = await Transfer.create({ sourceLocation: req.user.location, sourceLocationCode: source.code, referenceNumber, destinationLocation, items, notes, requestedBy: req.user._id, idempotencyKey });
   } catch (error) {
     if (error.code === 11000 && idempotencyKey) {
       return res.status(200).json(await Transfer.findOne({ requestedBy: req.user._id, idempotencyKey }));

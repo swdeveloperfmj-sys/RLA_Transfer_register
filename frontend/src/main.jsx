@@ -20,9 +20,11 @@ import {
   FaBell,
   FaFileInvoice,
 } from "react-icons/fa6";
-import "./styles.css";
+import "./styles.css?v=20260928-aod";
 import TransportPage from "./TransportPage.jsx";
 import HoldReportPage from "./HoldReportPage.jsx";
+import TransactionReportPage from "./TransactionReportPage.jsx";
+import AodPage from "./AodPage.jsx";
 import rlaLogo from "../assets/logo.png";
 
 // React Icons design system aliases keep icon use consistent throughout the dashboard.
@@ -48,6 +50,39 @@ function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm, dang
       <h2 id="confirm-title">{title}</h2>
       <p>{message}</p>
       <div className="confirm-actions"><button className="confirm-cancel" onClick={onCancel}>Cancel</button><button className={danger ? "confirm-danger" : "confirm-primary"} onClick={onConfirm}>{confirmLabel}</button></div>
+    </section>
+  </div>;
+}
+
+function EditLocationDialog({ location, onClose, onSave }) {
+  const [name, setName] = useState(location.name);
+  const [code, setCode] = useState(location.code || "");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (event) => {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) return setError("Location name is required.");
+    const trimmedCode = code.trim();
+    if (trimmedName === location.name && trimmedCode === location.code) return onClose();
+    setBusy(true);
+    setError("");
+    try {
+      await onSave({ name: trimmedName, code: trimmedCode });
+    } catch (saveError) {
+      setError(saveError.message);
+      setBusy(false);
+    }
+  };
+  return <div className="confirm-backdrop" role="presentation">
+    <section className="confirm-dialog edit-location-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-location-title">
+      <h2 id="edit-location-title">Edit location</h2>
+      <form onSubmit={submit}>
+        <label>Location name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
+        <label>Location code <small>Example: HO01</small><input value={code} onChange={(event) => setCode(event.target.value)} placeholder="HO01" /></label>
+        {error && <div className="error">{error}</div>}
+        <div className="confirm-actions"><button type="button" className="confirm-cancel" onClick={onClose}>Cancel</button><button className="confirm-primary" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button></div>
+      </form>
     </section>
   </div>;
 }
@@ -422,6 +457,7 @@ function Dashboard({ user, onLogout }) {
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const [newLocation, setNewLocation] = useState("");
+  const [newLocationCode, setNewLocationCode] = useState("");
   const [newRole, setNewRole] = useState("");
   const [page, setPage] = useState(() => new URLSearchParams(window.location.search).get("page") || "dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -434,6 +470,7 @@ function Dashboard({ user, onLogout }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState(() => new URLSearchParams(window.location.search).get("transfer") || "");
   const [confirmation, setConfirmation] = useState(null);
+  const [editingLocation, setEditingLocation] = useState(null);
   const shownNotificationIds = useRef(new Set());
   useEffect(() => {
     request("/locations").then(setLocations);
@@ -527,28 +564,25 @@ function Dashboard({ user, onLogout }) {
     try {
       const location = await request("/locations", {
         method: "POST",
-        body: JSON.stringify({ name: newLocation }),
+        body: JSON.stringify({ name: newLocation, code: newLocationCode }),
       });
       setLocations(
         [...locations, location].sort((a, b) => a.name.localeCompare(b.name)),
       );
       setNewLocation("");
+      setNewLocationCode("");
     } catch (e) {
       setError(e.message);
     }
   };
-  const changeLocation = async (item) => {
-    const name = window.prompt("Location name", item.name);
-    if (!name || name === item.name) return;
-    try {
-      const updated = await request(`/locations/${item._id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name }),
-      });
-      setLocations(locations.map((x) => (x._id === updated._id ? updated : x)));
-    } catch (e) {
-      setError(e.message);
-    }
+  const changeLocation = async ({ name, code }) => {
+    const updated = await request(`/locations/${editingLocation._id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name, code }),
+    });
+    setLocations((all) => all.map((item) => (item._id === updated._id ? updated : item)));
+    setEditingLocation(null);
+    toast.success("Location updated successfully.");
   };
   const removeLocation = async (item) => {
     try {
@@ -595,6 +629,8 @@ function Dashboard({ user, onLogout }) {
     transport: "Transport",
     invoiceRequests: "Invoice Requests",
     heldReports: "Held Item Reports",
+    transactionReports: "Transaction Report",
+    aod: "Raise AOD",
     incoming: "Incoming transport",
   };
   const markTabNotificationsRead = (target) => {
@@ -678,6 +714,7 @@ function Dashboard({ user, onLogout }) {
           <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transport</span>{updateDot("transport") && <i className={`nav-update-dot ${updateDot("transport")}`} />}</a>
           {isHeadOffice && <a href="#invoice-requests" className={page === "invoiceRequests" ? "active" : ""} onClick={(event) => navigate("invoiceRequests", event)}><FaFileInvoice /><span>Invoice Requests</span>{updateDot("invoiceRequests") && <i className={`nav-update-dot ${updateDot("invoiceRequests")}`} />}</a>}
           <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span>{updateDot("incoming") && <i className={`nav-update-dot ${updateDot("incoming")}`} />}</a>
+          <a href="#aod" className={page === "aod" ? "active" : ""} onClick={(event) => navigate("aod", event)}><FaFileInvoice /><span>Raise AOD</span></a>
           {user.role === "super_admin" && (
             <>
               <span className="nav-caption">MANAGEMENT</span>
@@ -705,6 +742,10 @@ function Dashboard({ user, onLogout }) {
               <a className={page === "heldReports" ? "active" : ""} onClick={() => navigate("heldReports")}>
                 <FaFileInvoice />
                 <span>Held Item Reports</span>
+              </a>
+              <a className={page === "transactionReports" ? "active" : ""} onClick={() => navigate("transactionReports")}>
+                <FaFileInvoice />
+                <span>Transaction Report</span>
               </a>
             </>
           )}
@@ -771,7 +812,9 @@ function Dashboard({ user, onLogout }) {
         {page === "transport" && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} />}
         {page === "invoiceRequests" && <TransportPage user={user} locations={locations} invoiceRequests highlightTransferId={selectedTransferId} />}
         {page === "incoming" && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} />}
-        {user.role === "super_admin" && page === "heldReports" && <HoldReportPage />}
+        {page === "aod" && <AodPage user={user} locations={locations} />}
+        {user.role === "super_admin" && page === "heldReports" && <HoldReportPage locations={locations} />}
+        {user.role === "super_admin" && page === "transactionReports" && <TransactionReportPage locations={locations} />}
         {page === "dashboard" && (
           <div className="stats">
             <article>
@@ -829,6 +872,7 @@ function Dashboard({ user, onLogout }) {
                   placeholder="New location name"
                   required
                 />
+                <input value={newLocationCode} onChange={(e) => setNewLocationCode(e.target.value)} placeholder="Location code (e.g. HO01)" required />
                 <button>
                   <Plus /> Add location
                 </button>
@@ -837,8 +881,8 @@ function Dashboard({ user, onLogout }) {
             <div className="managed-locations">
               {locations.map((item) => (
                 <div key={item._id}>
-                  <MapPin /> <span>{item.name}</span>
-                  <button onClick={() => changeLocation(item)}>Edit</button>
+                  <MapPin /> <span>{item.name} <small>{item.code || "Code not assigned"}</small></span>
+                  <button onClick={() => setEditingLocation(item)}>Edit</button>
                   <button onClick={() => setConfirmation({ title: "Delete location?", message: `Delete ${item.name}? This cannot be undone.`, confirmLabel: "Delete", danger: true, onConfirm: () => removeLocation(item) })}>Delete</button>
                 </div>
               ))}
@@ -947,6 +991,7 @@ function Dashboard({ user, onLogout }) {
         />
       )}
       {editing && <EditUser user={editing} locations={locations} roles={roles} onClose={() => setEditing(null)} onUpdated={async () => { const latestUsers = await request('/users'); setUsers(latestUsers); setEditing(null); }} />}
+      {editingLocation && <EditLocationDialog location={editingLocation} onClose={() => setEditingLocation(null)} onSave={changeLocation} />}
       {confirmation && <ConfirmDialog {...confirmation} onCancel={() => setConfirmation(null)} onConfirm={async () => { await confirmation.onConfirm(); setConfirmation(null); }} />}
     </main>
   );
@@ -988,5 +1033,17 @@ function App() {
 createRoot(document.getElementById("root")).render(<App />);
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+  if (import.meta.env.DEV) {
+    Promise.all([
+      navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))),
+      "caches" in window ? caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("rla-operations-")).map((key) => caches.delete(key)))) : Promise.resolve(),
+    ]).then(() => {
+      if (navigator.serviceWorker.controller && sessionStorage.getItem("rla-dev-cache-reset") !== "done") {
+        sessionStorage.setItem("rla-dev-cache-reset", "done");
+        window.location.reload();
+      }
+    }).catch(() => {});
+  } else {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+  }
 }

@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 
 const transferSchema = new mongoose.Schema({
   sourceLocation: { type: String, required: true },
+  sourceLocationCode: { type: String, required: true },
+  referenceNumber: { type: String, required: true, unique: true },
   destinationLocation: { type: String, required: true },
   items: [{
     itemCode: { type: String, required: true, trim: true },

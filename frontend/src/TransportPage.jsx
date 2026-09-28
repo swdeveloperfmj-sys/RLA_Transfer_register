@@ -332,7 +332,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                   <FaTruckFast />
                 </div>
                 <div className="route-copy">
-                  <small>TRANSFER ROUTE</small>
+                  <small>{transfer.referenceNumber || "TRANSFER ROUTE"}</small>
                   <strong>
                     {transfer.sourceLocation}
                     <FaArrowRight />
