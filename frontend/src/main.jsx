@@ -20,7 +20,7 @@ import {
   FaBell,
   FaFileInvoice,
 } from "react-icons/fa6";
-import "./styles.css?v=20260928-aod";
+import "./styles.css?v=20260929-notifications";
 import TransportPage from "./TransportPage.jsx";
 import HoldReportPage from "./HoldReportPage.jsx";
 import TransactionReportPage from "./TransactionReportPage.jsx";
@@ -807,10 +807,13 @@ function Dashboard({ user, onLogout }) {
             <button className="notification-bell" onClick={() => setNotificationsOpen((open) => !open)} title="Notifications" aria-label="Notifications">
               <FaBell />{unreadCount > 0 && <b>{unreadCount > 9 ? "9+" : unreadCount}</b>}
             </button>
-            {notificationsOpen && <section className="notification-panel">
-              <div className="notification-panel-title"><strong>Notifications</strong><span>Last 2 days</span></div>
+            {notificationsOpen && <section className="notification-panel" aria-label="Recent notifications">
+              <div className="notification-panel-title">
+                <div><strong>Notifications</strong><span>{unreadCount ? `${unreadCount} unread` : "You're all caught up"}</span></div>
+                <small>Last 2 days</small>
+              </div>
               {notifications.length ? notifications.map((notification) => <button key={notification._id} className={`notification-item ${notification.read ? "" : "unread"}`} onClick={() => openNotification(notification)}>
-                <span>{notification.message}</span><small>{new Date(notification.createdAt).toLocaleString()}</small>
+                <i aria-hidden="true"><FaBell /></i><span>{notification.message}<small>{new Date(notification.createdAt).toLocaleString()}</small></span>{!notification.read && <em aria-label="Unread notification" />}
               </button>) : <p className="notification-empty">No recent notifications.</p>}
             </section>}
           </div>
