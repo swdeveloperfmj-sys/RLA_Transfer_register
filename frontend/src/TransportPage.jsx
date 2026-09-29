@@ -24,13 +24,14 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(data?.message || "Request failed.");
   return data;
 }
-export default function TransportPage({ user, locations, incoming = false, invoiceRequests = false, highlightTransferId = "" }) {
+export default function TransportPage({ user, locations, incoming = false, invoiceRequests = false, highlightTransferId = "", prefillAod = null, onPrefillUsed }) {
   const [transfers, setTransfers] = useState([]),
     [destinationLocation, setDestination] = useState(""),
     [items, setItems] = useState([{ itemCode: "", quantity: 1 }]),
     [error, setError] = useState(""),
     [creating, setCreating] = useState(false),
     [workingTransferId, setWorkingTransferId] = useState("");
+  const [aodReference, setAodReference] = useState(null);
   const [holdRemarks, setHoldRemarks] = useState({});
   const [holdSelections, setHoldSelections] = useState({});
   const [requestMode, setRequestMode] = useState("manual");
@@ -91,6 +92,14 @@ export default function TransportPage({ user, locations, incoming = false, invoi
     });
   };
   const headOffice = user.location?.trim().toLowerCase() === "head office";
+  useEffect(() => {
+    if (!prefillAod) return;
+    setDestination(prefillAod.to || "");
+    setItems(prefillAod.items?.map((item) => ({ itemCode: item.code || "", quantity: Number(item.quantity) || 1 })) || [{ itemCode: "", quantity: 1 }]);
+    setAodReference(prefillAod);
+    setRequestMode("manual");
+    onPrefillUsed?.();
+  }, [prefillAod]);
   const load = async () => {
     try {
       setTransfers(await api("/transfers"));
@@ -100,6 +109,8 @@ export default function TransportPage({ user, locations, incoming = false, invoi
   };
   useEffect(() => {
     load();
+    const interval = window.setInterval(load, 5000);
+    return () => window.clearInterval(interval);
   }, []);
   const create = async (event) => {
     event.preventDefault();
@@ -115,11 +126,12 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       await api("/transfers", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ destinationLocation, items: validItems }),
+        body: JSON.stringify({ destinationLocation, items: validItems, notes: aodReference ? `Created from AOD ${aodReference.number}` : "", aodId: aodReference?._id }),
       });
       setDestination("");
       setItems([{ itemCode: "", quantity: 1 }]);
       setSheetRows([]);
+      setAodReference(null);
       await load();
     } catch (e) {
       setError(e.message);
@@ -210,6 +222,8 @@ export default function TransportPage({ user, locations, incoming = false, invoi
             <p>Choose a destination and list every item in this shipment.</p>
           </div>
           <form onSubmit={create}>
+            {aodReference && <div className="aod-transport-preview"><div><span>CREATED FROM AOD</span><strong>{aodReference.number}</strong><small>{aodReference.customerName} · {aodReference.from} → {aodReference.to}</small></div><button type="button" onClick={() => { setAodReference(null); onPrefillUsed?.(); }}>Clear AOD prefill</button></div>}
+            {aodReference && <label className="aod-reference-field">AOD No.<input value={aodReference.number} readOnly /></label>}
             <div className="request-mode-tabs"><button type="button" className={requestMode === "manual" ? "active" : ""} onClick={() => setRequestMode("manual")}>Manual entry</button><button type="button" className={requestMode === "excel" ? "active" : ""} onClick={() => setRequestMode("excel")}>Spreadsheet</button></div>
             <label>
               Destination location
@@ -341,6 +355,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                   <span>
                     {new Date(transfer.createdAt).toLocaleDateString()}
                   </span>
+                  {transfer.aod?.number && <span className="transport-aod-number">AOD: {transfer.aod.number}</span>}
                 </div>
                 <em className={`transfer-status status-${transfer.status}`}>
                   {statusLabels[transfer.status]}

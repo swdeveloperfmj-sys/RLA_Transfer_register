@@ -470,6 +470,7 @@ function Dashboard({ user, onLogout }) {
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState(() => new URLSearchParams(window.location.search).get("transfer") || "");
+  const [transportAod, setTransportAod] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
   const [editingLocation, setEditingLocation] = useState(null);
   const shownNotificationIds = useRef(new Set());
@@ -507,7 +508,7 @@ function Dashboard({ user, onLogout }) {
       }
     };
     showNewNotifications();
-    const interval = window.setInterval(showNewNotifications, 20000);
+    const interval = window.setInterval(showNewNotifications, 5000);
     return () => { mounted = false; window.clearInterval(interval); };
   }, []);
   useEffect(() => {
@@ -632,7 +633,10 @@ function Dashboard({ user, onLogout }) {
     heldReports: "Held Item Reports",
     transactionReports: "Transaction Report",
     aod: "Raise AOD",
+    myAods: "My Raised AODs",
     aodRequests: "AOD Ready Requests",
+    aodReturns: "AOD Returns",
+    aodTransport: "AOD Transport Requests",
     aodReports: "AOD Reports",
     incoming: "Incoming transport",
   };
@@ -642,7 +646,9 @@ function Dashboard({ user, onLogout }) {
       if (notification.read || (!notification.transfer && !notification.aod)) return false;
       if (target === "incoming") return notification.transfer?.destinationLocation === user.location;
       if (target === "invoiceRequests") return isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer?.status);
-      if (target === "aodRequests") return isHeadOfficeUser && notification.aod?.status === "ready";
+      if (target === "aodRequests") return !isHeadOfficeUser && notification.aod?.status === "awaiting_destination" && notification.aod?.to === user.location;
+      if (target === "aodReturns") return notification.aod?.status === "returning" && notification.aod?.from === user.location;
+      if (target === "aodTransport") return notification.aod?.status === "awaiting_transport" && notification.aod?.from === user.location;
       if (target === "transport") return Boolean(notification.transfer) && notification.transfer.destinationLocation !== user.location && !(isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer.status));
       return false;
     });
@@ -668,7 +674,7 @@ function Dashboard({ user, onLogout }) {
       request(`/transfers/notifications/${notification._id}/read`, { method: "PATCH" }).catch(() => {});
     }
     const transfer = notification.transfer;
-    if (notification.aod?._id) { setPage("aodRequests"); setSelectedTransferId(""); return; }
+    if (notification.aod?._id) { setPage(notification.aod.status === "awaiting_transport" && notification.aod.from === user.location ? "aodTransport" : notification.aod.status === "returning" && notification.aod.from === user.location ? "aodReturns" : "aodRequests"); setSelectedTransferId(""); return; }
     if (!transfer?._id) return;
     const isIncoming = user.location === transfer.destinationLocation;
     const isInvoiceRequest = user.location?.trim().toLowerCase() === "head office" && ["awaiting_head_office", "invoice_uploaded"].includes(transfer.status);
@@ -683,7 +689,9 @@ function Dashboard({ user, onLogout }) {
       if (entry.read || (!entry.transfer && !entry.aod)) return false;
       if (target === "incoming") return entry.transfer?.destinationLocation === user.location;
       if (target === "invoiceRequests") return isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer?.status);
-      if (target === "aodRequests") return isHeadOffice && entry.aod?.status === "ready";
+      if (target === "aodRequests") return !isHeadOffice && entry.aod?.status === "awaiting_destination" && entry.aod?.to === user.location;
+      if (target === "aodReturns") return entry.aod?.status === "returning" && entry.aod?.from === user.location;
+      if (target === "aodTransport") return entry.aod?.status === "awaiting_transport" && entry.aod?.from === user.location;
       return Boolean(entry.transfer) && entry.transfer.destinationLocation !== user.location && !(isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer.status));
     });
     if (!notification) return "";
@@ -719,9 +727,12 @@ function Dashboard({ user, onLogout }) {
           </a>
           <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transport</span>{updateDot("transport") && <i className={`nav-update-dot ${updateDot("transport")}`} />}</a>
           {isHeadOffice && <a href="#invoice-requests" className={page === "invoiceRequests" ? "active" : ""} onClick={(event) => navigate("invoiceRequests", event)}><FaFileInvoice /><span>Invoice Requests</span>{updateDot("invoiceRequests") && <i className={`nav-update-dot ${updateDot("invoiceRequests")}`} />}</a>}
-          {isHeadOffice && <a href="#aod-requests" className={page === "aodRequests" ? "active" : ""} onClick={(event) => navigate("aodRequests", event)}><FaFileInvoice /><span>AOD Ready Requests</span>{updateDot("aodRequests") && <i className={`nav-update-dot ${updateDot("aodRequests")}`} />}</a>}
+          {!isHeadOffice && <a href="#aod-requests" className={page === "aodRequests" ? "active" : ""} onClick={(event) => navigate("aodRequests", event)}><FaFileInvoice /><span>AOD Destination Requests</span>{updateDot("aodRequests") && <i className={`nav-update-dot ${updateDot("aodRequests")}`} />}</a>}
+          {!isHeadOffice && <a href="#aod-transport" className={page === "aodTransport" ? "active" : ""} onClick={(event) => navigate("aodTransport", event)}><FaFileInvoice /><span>AOD Transport Requests</span>{updateDot("aodTransport") && <i className={`nav-update-dot ${updateDot("aodTransport")}`} />}</a>}
+          <a href="#aod-returns" className={page === "aodReturns" ? "active" : ""} onClick={(event) => navigate("aodReturns", event)}><FaFileInvoice /><span>AOD Returns</span>{updateDot("aodReturns") && <i className={`nav-update-dot ${updateDot("aodReturns")}`} />}</a>
           <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span>{updateDot("incoming") && <i className={`nav-update-dot ${updateDot("incoming")}`} />}</a>
           <a href="#aod" className={page === "aod" ? "active" : ""} onClick={(event) => navigate("aod", event)}><FaFileInvoice /><span>Raise AOD</span></a>
+          <a href="#my-aods" className={page === "myAods" ? "active" : ""} onClick={(event) => navigate("myAods", event)}><FaFileInvoice /><span>My Raised AODs</span></a>
           {user.role === "super_admin" && (
             <>
               <span className="nav-caption">MANAGEMENT</span>
@@ -817,12 +828,15 @@ function Dashboard({ user, onLogout }) {
           )}
         </header>
         {error && <div className="error">{error}</div>}
-        {page === "transport" && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} />}
+        {page === "transport" && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} prefillAod={transportAod} onPrefillUsed={() => setTransportAod(null)} />}
         {page === "invoiceRequests" && <TransportPage user={user} locations={locations} invoiceRequests highlightTransferId={selectedTransferId} />}
         {page === "incoming" && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} />}
         {page === "aod" && <AodPage user={user} locations={locations} />}
-        {page === "aodRequests" && <AodWorkPage locations={locations} />}
-        {user.role === "super_admin" && page === "aodReports" && <AodWorkPage reports locations={locations} />}
+        {page === "myAods" && <AodWorkPage user={user} locations={locations} mode="mine" />}
+        {page === "aodRequests" && <AodWorkPage user={user} locations={locations} mode="destination" />}
+        {page === "aodReturns" && <AodWorkPage user={user} locations={locations} mode="returns" />}
+        {page === "aodTransport" && <AodWorkPage user={user} locations={locations} mode="transport" onProceed={(aod) => { setTransportAod(aod); setPage("transport"); }} />}
+        {user.role === "super_admin" && page === "aodReports" && <AodWorkPage reports user={user} locations={locations} />}
         {user.role === "super_admin" && page === "heldReports" && <HoldReportPage locations={locations} />}
         {user.role === "super_admin" && page === "transactionReports" && <TransactionReportPage locations={locations} />}
         {page === "dashboard" && (
