@@ -9,7 +9,7 @@ await mongoose.connect(process.env.MONGODB_URI);
 const email = process.env.SEED_ADMIN_EMAIL;
 const password = process.env.SEED_ADMIN_PASSWORD;
 if (!email || !password) throw new Error('Set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD in .env first.');
-await Location.bulkWrite(LOCATIONS.map(name => ({ updateOne: { filter: { name }, update: { $setOnInsert: { name } }, upsert: true } })));
+await Location.bulkWrite(LOCATIONS.map((name, index) => ({ updateOne: { filter: { name }, update: { $setOnInsert: { name, code: `${name === 'Head Office' ? 'HO' : 'LOC'}${String(index + 1).padStart(2, '0')}` } }, upsert: true } })));
 await Role.bulkWrite([{ updateOne: { filter: { key: 'super_admin' }, update: { $set: { name: 'Super Admin', isSystem: true } }, upsert: true } }, { updateOne: { filter: { key: 'manager' }, update: { $set: { name: 'Manager', isSystem: true } }, upsert: true } }]);
 await User.updateMany({ role: 'user' }, { role: 'manager' });
 await User.findOneAndUpdate({ email }, { name: 'System Administrator', email, password: await bcrypt.hash(password, 12), role: 'super_admin', location: '' }, { upsert: true, new: true, setDefaultsOnInsert: true });

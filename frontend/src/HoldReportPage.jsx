@@ -12,14 +12,14 @@ const groupRows = (rows) => Object.values(rows.reduce((groups, row) => {
   groups[key].items.push(row);
   return groups;
 }, {}));
-const downloadPdf = (rows, label) => {
+const downloadPdf = (rows, label, location = "") => {
   const jobs = groupRows(rows), pages = [];
   for (let index = 0; index < jobs.length; index += 6) pages.push(jobs.slice(index, index + 6));
   const objects = ["<< /Type /Catalog /Pages 2 0 R >>", `<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`];
   pages.forEach((page, index) => {
     const pageId = 3 + index * 2, contentId = pageId + 1;
     const text = (font, size, x, y, value) => `BT /${font} ${size} Tf ${x} ${y} Td (${pdfEscape(value)}) Tj ET`;
-    const commands = ["0.06 0.34 0.29 rg 0 790 595 52 re f", "1 1 1 rg", text("F2", 20, 40, 810, "RLA OPERATIONS"), text("F1", 10, 40, 795, "Held Transport Items Report"), "0.15 0.18 0.24 rg", text("F1", 9, 40, 768, `Report period: ${label}`), text("F1", 9, 430, 768, `Generated: ${new Date().toLocaleDateString()}`), "0.06 0.34 0.29 rg 40 730 515 22 re f", "1 1 1 rg", text("F2", 8, 48, 738, "JOB / ROUTE"), text("F2", 8, 200, 738, "HELD ITEMS"), text("F2", 8, 355, 738, "HELD BY"), text("F2", 8, 465, 738, "DATE")];
+    const commands = ["0.06 0.34 0.29 rg 0 790 595 52 re f", "1 1 1 rg", text("F2", 20, 40, 810, "RLA OPERATIONS"), text("F1", 10, 40, 795, "Held Transport Items Report"), "0.15 0.18 0.24 rg", text("F1", 9, 40, 768, `Report period: ${label}`), text("F1", 9, 40, 753, `Sent location: ${location || "All locations"}`), text("F1", 9, 430, 768, `Generated: ${new Date().toLocaleDateString()}`), "0.06 0.34 0.29 rg 40 730 515 22 re f", "1 1 1 rg", text("F2", 8, 48, 738, "JOB / ROUTE"), text("F2", 8, 200, 738, "HELD ITEMS"), text("F2", 8, 355, 738, "HELD BY"), text("F2", 8, 465, 738, "DATE")];
     let y = 730;
     page.forEach((job, rowIndex) => {
       const rowHeight = 72, items = job.items.map((item) => `${item.itemCode} x ${item.quantity}`).join(", ");
@@ -40,21 +40,23 @@ const downloadPdf = (rows, label) => {
   const link = document.createElement("a"); link.href = url; link.download = `held-items-${label.replace(/[^a-z0-9]/gi, "-")}.pdf`; link.click(); URL.revokeObjectURL(url);
 };
 
-export default function HoldReportPage() {
-  const [mode, setMode] = useState("daily"), [date, setDate] = useState(today), [selectedMonth, setSelectedMonth] = useState(month), [fromDate, setFromDate] = useState(today), [toDate, setToDate] = useState(today), [rows, setRows] = useState([]), [error, setError] = useState(""), [loading, setLoading] = useState(false);
+export default function HoldReportPage({ locations = [] }) {
+  const [mode, setMode] = useState("daily"), [date, setDate] = useState(today), [selectedMonth, setSelectedMonth] = useState(month), [fromDate, setFromDate] = useState(today), [toDate, setToDate] = useState(today), [location, setLocation] = useState(""), [rows, setRows] = useState([]), [error, setError] = useState(""), [loading, setLoading] = useState(false);
   const range = () => mode === "daily" ? { from: date, to: date, label: date } : mode === "monthly" ? { from: `${selectedMonth}-01`, to: new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).toISOString().slice(0, 10), label: selectedMonth } : { from: fromDate, to: toDate, label: `${fromDate}-to-${toDate}` };
   const load = async () => {
     setLoading(true); setError("");
     try {
       const { from, to } = range(), token = localStorage.getItem("token");
-      const response = await fetch(`${API}/transfers/reports/held-items?from=${from}&to=${to}`, { headers: { Authorization: `Bearer ${token}` } });
+      const params = new URLSearchParams({ from, to });
+      if (location) params.set("location", location);
+      const response = await fetch(`${API}/transfers/reports/held-items?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await response.json(); if (!response.ok) throw new Error(data.message || "Could not load the report."); setRows(data);
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, [mode, date, selectedMonth, fromDate, toDate]);
+  useEffect(() => { load(); }, [mode, date, selectedMonth, fromDate, toDate, location]);
   return <section className="hold-report">
     <div className="panel-heading"><span className="eyebrow">SUPER ADMIN REPORT</span><h2>Held transport items</h2><p>Review held items, who placed them on hold, and the stated reason.</p></div>
-    <div className="report-controls"><select value={mode} onChange={(e) => setMode(e.target.value)}><option value="daily">Daily</option><option value="monthly">Monthly</option><option value="range">Date range</option></select>{mode === "daily" ? <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /> : mode === "monthly" ? <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : <><input type="date" value={fromDate} max={toDate} onChange={(e) => setFromDate(e.target.value)} /><span>to</span><input type="date" value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} /></>}<button onClick={load}><FaFilter /> {loading ? "Loading…" : "Apply filter"}</button><button className="pdf-download" disabled={!rows.length} onClick={() => downloadPdf(rows, range().label)}><FaDownload /> Download PDF</button></div>
+    <div className="report-controls"><select value={mode} onChange={(e) => setMode(e.target.value)}><option value="daily">Daily</option><option value="monthly">Monthly</option><option value="range">Date range</option></select><select value={location} onChange={(e) => setLocation(e.target.value)} aria-label="Filter by sent location"><option value="">All sent locations</option>{locations.map((item) => <option key={item._id} value={item.name}>{item.name}{item.code ? ` (${item.code})` : ""}</option>)}</select>{mode === "daily" ? <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /> : mode === "monthly" ? <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : <><input type="date" value={fromDate} max={toDate} onChange={(e) => setFromDate(e.target.value)} /><span>to</span><input type="date" value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} /></>}<button onClick={load}><FaFilter /> {loading ? "Loading…" : "Apply filter"}</button><button className="pdf-download" disabled={!rows.length} onClick={() => downloadPdf(rows, range().label, location)}><FaDownload /> Download PDF</button></div>
     {error && <div className="error">{error}</div>}
     <div className="held-report-list">{groupRows(rows).map((job) => <article key={job.transferId}><div><FaPauseCircle /><strong>{job.sourceLocation} → {job.destinationLocation}</strong><span>Requested by: {job.requestedBy?.name || "Unknown"}</span></div><div className="held-job-items">{job.items.map((item) => <span key={`${item.itemCode}-${item.quantity}`}>{item.itemCode} <b>× {item.quantity}</b></span>)}</div><p><b>Held by:</b> {job.heldBy?.name || "Unknown"}<br /><b>Held at:</b> {new Date(job.heldAt).toLocaleString()}<br /><b>Remark:</b> {job.holdRemark}</p></article>)}{!loading && !rows.length && <p className="transfer-empty">No held items for this period.</p>}</div>
   </section>;

@@ -2,8 +2,10 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import Transfer from '../models/Transfer.js';
+import Aod from '../models/Aod.js';
 import Notification from '../models/Notification.js';
 import Location from '../models/Location.js';
+import LocationSequence from '../models/LocationSequence.js';
 import { protect, superAdminOnly } from '../middleware/auth.js';
 import { notifyLocationUsers } from '../services/notifications.js';
 import { deleteInvoiceFromR2, r2Configured, uploadInvoiceToR2 } from '../services/r2.js';
@@ -28,14 +30,14 @@ router.post('/push/subscribe', async (req, res) => {
 });
 router.get('/', async (req, res) => {
   const query = isHeadOffice(req.user.location) ? {} : { $or: [{ sourceLocation: req.user.location }, { destinationLocation: req.user.location }] };
-  res.json(await Transfer.find(query).populate('requestedBy', 'name email').sort({ createdAt: -1 }));
+  res.json(await Transfer.find(query).populate('requestedBy', 'name email').populate('aod', 'number').sort({ createdAt: -1 }));
 });
 router.get('/notifications', async (req, res) => {
   const visibleSince = new Date(Date.now() - 48 * 60 * 60 * 1000);
   const notifications = await Notification.find({
     createdAt: { $gte: visibleSince },
     $or: [{ user: req.user._id }, { user: { $exists: false }, location: req.user.location }]
-  }).populate('transfer', 'sourceLocation destinationLocation status items invoiceFile createdAt').sort({ createdAt: -1 }).limit(30);
+  }).populate('transfer', 'sourceLocation destinationLocation status items invoiceFile createdAt').populate('aod', 'number customerName from to status documentFile createdAt').sort({ createdAt: -1 }).limit(30);
   res.json(notifications);
 });
 router.patch('/notifications/:id/read', async (req, res) => {
@@ -44,11 +46,12 @@ router.patch('/notifications/:id/read', async (req, res) => {
   res.json(notification);
 });
 router.get('/reports/held-items', superAdminOnly, async (req, res) => {
-  const { from, to } = req.query;
+  const { from, to, location } = req.query;
   const dateFilter = {};
   if (from) dateFilter.$gte = new Date(`${from}T00:00:00.000Z`);
   if (to) dateFilter.$lte = new Date(`${to}T23:59:59.999Z`);
   const query = { 'items.reviewStatus': 'held' };
+  if (location) query.sourceLocation = location;
   if (Object.keys(dateFilter).length) query['items.reviewedAt'] = dateFilter;
   const transfers = await Transfer.find(query)
     .populate('requestedBy', 'name email location')
@@ -69,8 +72,29 @@ router.get('/reports/held-items', superAdminOnly, async (req, res) => {
     })));
   res.json(heldItems.sort((a, b) => new Date(b.heldAt) - new Date(a.heldAt)));
 });
+router.get('/reports/transactions', superAdminOnly, async (req, res) => {
+  const { from, to, location } = req.query;
+  const query = {};
+  if (from || to) {
+    query.createdAt = {};
+    if (from) query.createdAt.$gte = new Date(`${from}T00:00:00.000Z`);
+    if (to) query.createdAt.$lte = new Date(`${to}T23:59:59.999Z`);
+  }
+  if (location) query.sourceLocation = location;
+  const transfers = await Transfer.find(query).sort({ createdAt: -1 });
+  res.json(transfers.map(transfer => ({
+    id: transfer._id,
+    referenceNumber: transfer.referenceNumber || String(transfer._id),
+    createdAt: transfer.createdAt,
+    sourceLocation: transfer.sourceLocation,
+    destinationLocation: transfer.destinationLocation,
+    sentItems: transfer.items.map(item => ({ itemCode: item.itemCode, quantity: item.quantity })),
+    heldItems: transfer.items.filter(item => item.reviewStatus === 'held').map(item => ({ itemCode: item.itemCode, quantity: item.quantity, remark: item.holdRemark })),
+    status: transfer.status
+  })));
+});
 router.post('/', async (req, res) => {
-  const { destinationLocation, items, notes = '' } = req.body;
+  const { destinationLocation, items, notes = '', aodId } = req.body;
   const idempotencyKey = req.get('Idempotency-Key');
   if (!req.user.location) return res.status(403).json({ message: 'Your account needs an assigned location before you can create transport requests.' });
   if (!destinationLocation || destinationLocation === req.user.location) return res.status(400).json({ message: 'Select another destination location.' });
@@ -81,7 +105,14 @@ router.post('/', async (req, res) => {
   }
   let transfer;
   try {
-    transfer = await Transfer.create({ sourceLocation: req.user.location, destinationLocation, items, notes, requestedBy: req.user._id, idempotencyKey });
+    const source = await Location.findOne({ name: req.user.location, isActive: true });
+    if (!source?.code) return res.status(400).json({ message: 'Your location needs a code before you can create transport requests.' });
+    const sequence = await LocationSequence.findOneAndUpdate({ locationCode: source.code }, { $inc: { value: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+    const referenceNumber = `${source.code}-${String(sequence.value).padStart(5, '0')}`;
+    let aod;
+    if (aodId) { aod = await Aod.findById(aodId); if (!aod || aod.status !== 'awaiting_transport') return res.status(409).json({ message: 'This AOD is not available for transport processing.' }); if (aod.from !== req.user.location) return res.status(403).json({ message: 'Only the AOD source location can create its transport request.' }); if (aod.to !== destinationLocation) return res.status(400).json({ message: 'The transport destination must match the AOD destination.' }); }
+    transfer = await Transfer.create({ sourceLocation: req.user.location, sourceLocationCode: source.code, referenceNumber, destinationLocation, items, notes, aod: aod?._id, requestedBy: req.user._id, idempotencyKey });
+    if (aod) { aod.status = 'transport_requested'; await aod.save(); }
   } catch (error) {
     if (error.code === 11000 && idempotencyKey) {
       return res.status(200).json(await Transfer.findOne({ requestedBy: req.user._id, idempotencyKey }));
@@ -104,6 +135,7 @@ router.patch('/:id/items/:index/review', async (req, res) => {
   item.holdRemark = reviewStatus === 'held' ? holdRemark.trim() : '';
   item.reviewedAt = new Date();
   item.reviewedBy = req.user._id;
+  if (transfer.items.every(entry => entry.reviewStatus === 'held')) transfer.status = 'closed';
   await transfer.save();
   if (reviewStatus === 'held') {
     await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Transport item placed on hold', message: `${item.itemCode} in the transport request to ${transfer.destinationLocation} is on hold. Remark: ${item.holdRemark}`, transfer: transfer._id });
@@ -125,6 +157,7 @@ router.post('/:id/items/hold', async (req, res) => {
     transfer.items[index].reviewedAt = heldAt;
     transfer.items[index].reviewedBy = req.user._id;
   });
+  if (transfer.items.every(item => item.reviewStatus === 'held')) transfer.status = 'closed';
   await transfer.save();
   const itemCodes = uniqueIndexes.map(index => transfer.items[index].itemCode).join(', ');
   await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Transport items placed on hold', message: `${itemCodes} in the transport request to ${transfer.destinationLocation} are on hold. Remark: ${holdRemark.trim()}`, transfer: transfer._id });

@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 
 const transferSchema = new mongoose.Schema({
   sourceLocation: { type: String, required: true },
+  sourceLocationCode: { type: String, required: true },
+  referenceNumber: { type: String, required: true, unique: true },
   destinationLocation: { type: String, required: true },
   items: [{
     itemCode: { type: String, required: true, trim: true },
@@ -14,11 +16,12 @@ const transferSchema = new mongoose.Schema({
   }],
   notes: String,
   requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  aod: { type: mongoose.Schema.Types.ObjectId, ref: 'Aod' },
   idempotencyKey: { type: String, trim: true, sparse: true },
   invoiceFile: String,
   invoiceStorageKey: String,
   invoiceOriginalName: String,
-  status: { type: String, enum: ['awaiting_head_office', 'invoice_uploaded', 'awaiting_destination', 'completed'], default: 'awaiting_head_office' },
+  status: { type: String, enum: ['awaiting_head_office', 'invoice_uploaded', 'awaiting_destination', 'completed', 'closed'], default: 'awaiting_head_office' },
   invoiceUploadedAt: Date, dispatchedAt: Date, receivedAt: Date
 }, { timestamps: true });
 transferSchema.index({ requestedBy: 1, idempotencyKey: 1 }, { unique: true, sparse: true });

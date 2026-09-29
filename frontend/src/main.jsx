@@ -20,9 +20,12 @@ import {
   FaBell,
   FaFileInvoice,
 } from "react-icons/fa6";
-import "./styles.css";
+import "./styles.css?v=20260928-aod";
 import TransportPage from "./TransportPage.jsx";
 import HoldReportPage from "./HoldReportPage.jsx";
+import TransactionReportPage from "./TransactionReportPage.jsx";
+import AodPage from "./AodPage.jsx";
+import AodWorkPage from "./AodWorkPage.jsx";
 import rlaLogo from "../assets/logo.png";
 
 // React Icons design system aliases keep icon use consistent throughout the dashboard.
@@ -48,6 +51,39 @@ function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm, dang
       <h2 id="confirm-title">{title}</h2>
       <p>{message}</p>
       <div className="confirm-actions"><button className="confirm-cancel" onClick={onCancel}>Cancel</button><button className={danger ? "confirm-danger" : "confirm-primary"} onClick={onConfirm}>{confirmLabel}</button></div>
+    </section>
+  </div>;
+}
+
+function EditLocationDialog({ location, onClose, onSave }) {
+  const [name, setName] = useState(location.name);
+  const [code, setCode] = useState(location.code || "");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (event) => {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) return setError("Location name is required.");
+    const trimmedCode = code.trim();
+    if (trimmedName === location.name && trimmedCode === location.code) return onClose();
+    setBusy(true);
+    setError("");
+    try {
+      await onSave({ name: trimmedName, code: trimmedCode });
+    } catch (saveError) {
+      setError(saveError.message);
+      setBusy(false);
+    }
+  };
+  return <div className="confirm-backdrop" role="presentation">
+    <section className="confirm-dialog edit-location-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-location-title">
+      <h2 id="edit-location-title">Edit location</h2>
+      <form onSubmit={submit}>
+        <label>Location name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
+        <label>Location code <small>Example: HO01</small><input value={code} onChange={(event) => setCode(event.target.value)} placeholder="HO01" /></label>
+        {error && <div className="error">{error}</div>}
+        <div className="confirm-actions"><button type="button" className="confirm-cancel" onClick={onClose}>Cancel</button><button className="confirm-primary" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button></div>
+      </form>
     </section>
   </div>;
 }
@@ -422,6 +458,7 @@ function Dashboard({ user, onLogout }) {
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const [newLocation, setNewLocation] = useState("");
+  const [newLocationCode, setNewLocationCode] = useState("");
   const [newRole, setNewRole] = useState("");
   const [page, setPage] = useState(() => new URLSearchParams(window.location.search).get("page") || "dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -433,7 +470,9 @@ function Dashboard({ user, onLogout }) {
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState(() => new URLSearchParams(window.location.search).get("transfer") || "");
+  const [transportAod, setTransportAod] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
+  const [editingLocation, setEditingLocation] = useState(null);
   const shownNotificationIds = useRef(new Set());
   useEffect(() => {
     request("/locations").then(setLocations);
@@ -469,7 +508,7 @@ function Dashboard({ user, onLogout }) {
       }
     };
     showNewNotifications();
-    const interval = window.setInterval(showNewNotifications, 20000);
+    const interval = window.setInterval(showNewNotifications, 5000);
     return () => { mounted = false; window.clearInterval(interval); };
   }, []);
   useEffect(() => {
@@ -527,28 +566,25 @@ function Dashboard({ user, onLogout }) {
     try {
       const location = await request("/locations", {
         method: "POST",
-        body: JSON.stringify({ name: newLocation }),
+        body: JSON.stringify({ name: newLocation, code: newLocationCode }),
       });
       setLocations(
         [...locations, location].sort((a, b) => a.name.localeCompare(b.name)),
       );
       setNewLocation("");
+      setNewLocationCode("");
     } catch (e) {
       setError(e.message);
     }
   };
-  const changeLocation = async (item) => {
-    const name = window.prompt("Location name", item.name);
-    if (!name || name === item.name) return;
-    try {
-      const updated = await request(`/locations/${item._id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name }),
-      });
-      setLocations(locations.map((x) => (x._id === updated._id ? updated : x)));
-    } catch (e) {
-      setError(e.message);
-    }
+  const changeLocation = async ({ name, code }) => {
+    const updated = await request(`/locations/${editingLocation._id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name, code }),
+    });
+    setLocations((all) => all.map((item) => (item._id === updated._id ? updated : item)));
+    setEditingLocation(null);
+    toast.success("Location updated successfully.");
   };
   const removeLocation = async (item) => {
     try {
@@ -595,15 +631,25 @@ function Dashboard({ user, onLogout }) {
     transport: "Transport",
     invoiceRequests: "Invoice Requests",
     heldReports: "Held Item Reports",
+    transactionReports: "Transaction Report",
+    aod: "Raise AOD",
+    myAods: "My Raised AODs",
+    aodRequests: "AOD Ready Requests",
+    aodReturns: "AOD Returns",
+    aodTransport: "AOD Transport Requests",
+    aodReports: "AOD Reports",
     incoming: "Incoming transport",
   };
   const markTabNotificationsRead = (target) => {
     const isHeadOfficeUser = user.location?.trim().toLowerCase() === "head office";
     const matched = notifications.filter((notification) => {
-      if (notification.read || !notification.transfer) return false;
-      if (target === "incoming") return notification.transfer.destinationLocation === user.location;
-      if (target === "invoiceRequests") return isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer.status);
-      if (target === "transport") return notification.transfer.destinationLocation !== user.location && !(isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer.status));
+      if (notification.read || (!notification.transfer && !notification.aod)) return false;
+      if (target === "incoming") return notification.transfer?.destinationLocation === user.location;
+      if (target === "invoiceRequests") return isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer?.status);
+      if (target === "aodRequests") return !isHeadOfficeUser && notification.aod?.status === "awaiting_destination" && notification.aod?.to === user.location;
+      if (target === "aodReturns") return notification.aod?.status === "returning" && notification.aod?.from === user.location;
+      if (target === "aodTransport") return notification.aod?.status === "awaiting_transport" && notification.aod?.from === user.location;
+      if (target === "transport") return Boolean(notification.transfer) && notification.transfer.destinationLocation !== user.location && !(isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer.status));
       return false;
     });
     if (!matched.length) return;
@@ -628,6 +674,7 @@ function Dashboard({ user, onLogout }) {
       request(`/transfers/notifications/${notification._id}/read`, { method: "PATCH" }).catch(() => {});
     }
     const transfer = notification.transfer;
+    if (notification.aod?._id) { setPage(notification.aod.status === "awaiting_transport" && notification.aod.from === user.location ? "aodTransport" : notification.aod.status === "returning" && notification.aod.from === user.location ? "aodReturns" : "aodRequests"); setSelectedTransferId(""); return; }
     if (!transfer?._id) return;
     const isIncoming = user.location === transfer.destinationLocation;
     const isInvoiceRequest = user.location?.trim().toLowerCase() === "head office" && ["awaiting_head_office", "invoice_uploaded"].includes(transfer.status);
@@ -639,10 +686,13 @@ function Dashboard({ user, onLogout }) {
   const isHeadOffice = user.location?.trim().toLowerCase() === "head office";
   const updateDot = (target) => {
     const notification = notifications.find((entry) => {
-      if (entry.read || !entry.transfer) return false;
-      if (target === "incoming") return entry.transfer.destinationLocation === user.location;
-      if (target === "invoiceRequests") return isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer.status);
-      return entry.transfer.destinationLocation !== user.location && !(isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer.status));
+      if (entry.read || (!entry.transfer && !entry.aod)) return false;
+      if (target === "incoming") return entry.transfer?.destinationLocation === user.location;
+      if (target === "invoiceRequests") return isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer?.status);
+      if (target === "aodRequests") return !isHeadOffice && entry.aod?.status === "awaiting_destination" && entry.aod?.to === user.location;
+      if (target === "aodReturns") return entry.aod?.status === "returning" && entry.aod?.from === user.location;
+      if (target === "aodTransport") return entry.aod?.status === "awaiting_transport" && entry.aod?.from === user.location;
+      return Boolean(entry.transfer) && entry.transfer.destinationLocation !== user.location && !(isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer.status));
     });
     if (!notification) return "";
     if (notification.transfer?.status === "awaiting_destination") return "red";
@@ -677,7 +727,12 @@ function Dashboard({ user, onLogout }) {
           </a>
           <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transport</span>{updateDot("transport") && <i className={`nav-update-dot ${updateDot("transport")}`} />}</a>
           {isHeadOffice && <a href="#invoice-requests" className={page === "invoiceRequests" ? "active" : ""} onClick={(event) => navigate("invoiceRequests", event)}><FaFileInvoice /><span>Invoice Requests</span>{updateDot("invoiceRequests") && <i className={`nav-update-dot ${updateDot("invoiceRequests")}`} />}</a>}
+          {!isHeadOffice && <a href="#aod-requests" className={page === "aodRequests" ? "active" : ""} onClick={(event) => navigate("aodRequests", event)}><FaFileInvoice /><span>AOD Destination Requests</span>{updateDot("aodRequests") && <i className={`nav-update-dot ${updateDot("aodRequests")}`} />}</a>}
+          {!isHeadOffice && <a href="#aod-transport" className={page === "aodTransport" ? "active" : ""} onClick={(event) => navigate("aodTransport", event)}><FaFileInvoice /><span>AOD Transport Requests</span>{updateDot("aodTransport") && <i className={`nav-update-dot ${updateDot("aodTransport")}`} />}</a>}
+          <a href="#aod-returns" className={page === "aodReturns" ? "active" : ""} onClick={(event) => navigate("aodReturns", event)}><FaFileInvoice /><span>AOD Returns</span>{updateDot("aodReturns") && <i className={`nav-update-dot ${updateDot("aodReturns")}`} />}</a>
           <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span>{updateDot("incoming") && <i className={`nav-update-dot ${updateDot("incoming")}`} />}</a>
+          <a href="#aod" className={page === "aod" ? "active" : ""} onClick={(event) => navigate("aod", event)}><FaFileInvoice /><span>Raise AOD</span></a>
+          <a href="#my-aods" className={page === "myAods" ? "active" : ""} onClick={(event) => navigate("myAods", event)}><FaFileInvoice /><span>My Raised AODs</span></a>
           {user.role === "super_admin" && (
             <>
               <span className="nav-caption">MANAGEMENT</span>
@@ -706,6 +761,11 @@ function Dashboard({ user, onLogout }) {
                 <FaFileInvoice />
                 <span>Held Item Reports</span>
               </a>
+              <a className={page === "transactionReports" ? "active" : ""} onClick={() => navigate("transactionReports")}>
+                <FaFileInvoice />
+                <span>Transaction Report</span>
+              </a>
+              <a className={page === "aodReports" ? "active" : ""} onClick={() => navigate("aodReports")}><FaFileInvoice /><span>AOD Reports</span></a>
             </>
           )}
         </nav>
@@ -768,10 +828,17 @@ function Dashboard({ user, onLogout }) {
           )}
         </header>
         {error && <div className="error">{error}</div>}
-        {page === "transport" && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} />}
+        {page === "transport" && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} prefillAod={transportAod} onPrefillUsed={() => setTransportAod(null)} />}
         {page === "invoiceRequests" && <TransportPage user={user} locations={locations} invoiceRequests highlightTransferId={selectedTransferId} />}
         {page === "incoming" && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} />}
-        {user.role === "super_admin" && page === "heldReports" && <HoldReportPage />}
+        {page === "aod" && <AodPage user={user} locations={locations} />}
+        {page === "myAods" && <AodWorkPage user={user} locations={locations} mode="mine" />}
+        {page === "aodRequests" && <AodWorkPage user={user} locations={locations} mode="destination" />}
+        {page === "aodReturns" && <AodWorkPage user={user} locations={locations} mode="returns" />}
+        {page === "aodTransport" && <AodWorkPage user={user} locations={locations} mode="transport" onProceed={(aod) => { setTransportAod(aod); setPage("transport"); }} />}
+        {user.role === "super_admin" && page === "aodReports" && <AodWorkPage reports user={user} locations={locations} />}
+        {user.role === "super_admin" && page === "heldReports" && <HoldReportPage locations={locations} />}
+        {user.role === "super_admin" && page === "transactionReports" && <TransactionReportPage locations={locations} />}
         {page === "dashboard" && (
           <div className="stats">
             <article>
@@ -829,6 +896,7 @@ function Dashboard({ user, onLogout }) {
                   placeholder="New location name"
                   required
                 />
+                <input value={newLocationCode} onChange={(e) => setNewLocationCode(e.target.value)} placeholder="Location code (e.g. HO01)" required />
                 <button>
                   <Plus /> Add location
                 </button>
@@ -837,8 +905,8 @@ function Dashboard({ user, onLogout }) {
             <div className="managed-locations">
               {locations.map((item) => (
                 <div key={item._id}>
-                  <MapPin /> <span>{item.name}</span>
-                  <button onClick={() => changeLocation(item)}>Edit</button>
+                  <MapPin /> <span>{item.name} <small>{item.code || "Code not assigned"}</small></span>
+                  <button onClick={() => setEditingLocation(item)}>Edit</button>
                   <button onClick={() => setConfirmation({ title: "Delete location?", message: `Delete ${item.name}? This cannot be undone.`, confirmLabel: "Delete", danger: true, onConfirm: () => removeLocation(item) })}>Delete</button>
                 </div>
               ))}
@@ -947,6 +1015,7 @@ function Dashboard({ user, onLogout }) {
         />
       )}
       {editing && <EditUser user={editing} locations={locations} roles={roles} onClose={() => setEditing(null)} onUpdated={async () => { const latestUsers = await request('/users'); setUsers(latestUsers); setEditing(null); }} />}
+      {editingLocation && <EditLocationDialog location={editingLocation} onClose={() => setEditingLocation(null)} onSave={changeLocation} />}
       {confirmation && <ConfirmDialog {...confirmation} onCancel={() => setConfirmation(null)} onConfirm={async () => { await confirmation.onConfirm(); setConfirmation(null); }} />}
     </main>
   );
@@ -988,5 +1057,17 @@ function App() {
 createRoot(document.getElementById("root")).render(<App />);
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+  if (import.meta.env.DEV) {
+    Promise.all([
+      navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))),
+      "caches" in window ? caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("rla-operations-")).map((key) => caches.delete(key)))) : Promise.resolve(),
+    ]).then(() => {
+      if (navigator.serviceWorker.controller && sessionStorage.getItem("rla-dev-cache-reset") !== "done") {
+        sessionStorage.setItem("rla-dev-cache-reset", "done");
+        window.location.reload();
+      }
+    }).catch(() => {});
+  } else {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+  }
 }
