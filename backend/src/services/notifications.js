@@ -40,7 +40,7 @@ export const sendNotificationEmail = async ({ recipient, subject, message }) => 
 
 // Saves a personal dashboard alert and emails every active user at the affected location.
 // Email delivery is deliberately non-blocking: an SMTP outage must not stop a transfer workflow.
-export const notifyLocationUsers = async ({ location, message, subject = 'RLA Operations update', transfer }) => {
+export const notifyLocationUsers = async ({ location, message, subject = 'RLA Operations update', transfer, aod }) => {
   const recipients = await User.find({
     isActive: true,
     $or: [
@@ -51,7 +51,7 @@ export const notifyLocationUsers = async ({ location, message, subject = 'RLA Op
     ]
   }).select('name email mobileNumber location role');
   await Promise.all(recipients.map(async recipient => {
-    await Notification.create({ user: recipient._id, location, message, transfer });
+    await Notification.create({ user: recipient._id, location, message, transfer, aod });
     await Promise.all([
       sendNotificationEmail({ recipient, subject, message }).catch(error => console.error(`Could not send notification email to ${recipient.email}:`, error.message)),
       sendTextwareSms({ mobileNumber: recipient.mobileNumber, message: `RLA: ${message}` }).catch(error => console.error(`Could not send SMS to ${recipient.name}:`, error.message)),

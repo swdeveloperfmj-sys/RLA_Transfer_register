@@ -4,6 +4,7 @@ const notificationSchema = new mongoose.Schema({
   location: { type: String, required: true },
   message: { type: String, required: true },
   transfer: { type: mongoose.Schema.Types.ObjectId, ref: 'Transfer' },
+  aod: { type: mongoose.Schema.Types.ObjectId, ref: 'Aod' },
   read: { type: Boolean, default: false }
 }, { timestamps: true });
 notificationSchema.index({ user: 1, createdAt: -1 });

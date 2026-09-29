@@ -36,7 +36,7 @@ router.get('/notifications', async (req, res) => {
   const notifications = await Notification.find({
     createdAt: { $gte: visibleSince },
     $or: [{ user: req.user._id }, { user: { $exists: false }, location: req.user.location }]
-  }).populate('transfer', 'sourceLocation destinationLocation status items invoiceFile createdAt').sort({ createdAt: -1 }).limit(30);
+  }).populate('transfer', 'sourceLocation destinationLocation status items invoiceFile createdAt').populate('aod', 'number customerName from to status documentFile createdAt').sort({ createdAt: -1 }).limit(30);
   res.json(notifications);
 });
 router.patch('/notifications/:id/read', async (req, res) => {

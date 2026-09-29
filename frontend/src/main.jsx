@@ -25,6 +25,7 @@ import TransportPage from "./TransportPage.jsx";
 import HoldReportPage from "./HoldReportPage.jsx";
 import TransactionReportPage from "./TransactionReportPage.jsx";
 import AodPage from "./AodPage.jsx";
+import AodWorkPage from "./AodWorkPage.jsx";
 import rlaLogo from "../assets/logo.png";
 
 // React Icons design system aliases keep icon use consistent throughout the dashboard.
@@ -631,15 +632,18 @@ function Dashboard({ user, onLogout }) {
     heldReports: "Held Item Reports",
     transactionReports: "Transaction Report",
     aod: "Raise AOD",
+    aodRequests: "AOD Ready Requests",
+    aodReports: "AOD Reports",
     incoming: "Incoming transport",
   };
   const markTabNotificationsRead = (target) => {
     const isHeadOfficeUser = user.location?.trim().toLowerCase() === "head office";
     const matched = notifications.filter((notification) => {
-      if (notification.read || !notification.transfer) return false;
-      if (target === "incoming") return notification.transfer.destinationLocation === user.location;
-      if (target === "invoiceRequests") return isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer.status);
-      if (target === "transport") return notification.transfer.destinationLocation !== user.location && !(isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer.status));
+      if (notification.read || (!notification.transfer && !notification.aod)) return false;
+      if (target === "incoming") return notification.transfer?.destinationLocation === user.location;
+      if (target === "invoiceRequests") return isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer?.status);
+      if (target === "aodRequests") return isHeadOfficeUser && notification.aod?.status === "ready";
+      if (target === "transport") return Boolean(notification.transfer) && notification.transfer.destinationLocation !== user.location && !(isHeadOfficeUser && ["awaiting_head_office", "invoice_uploaded"].includes(notification.transfer.status));
       return false;
     });
     if (!matched.length) return;
@@ -664,6 +668,7 @@ function Dashboard({ user, onLogout }) {
       request(`/transfers/notifications/${notification._id}/read`, { method: "PATCH" }).catch(() => {});
     }
     const transfer = notification.transfer;
+    if (notification.aod?._id) { setPage("aodRequests"); setSelectedTransferId(""); return; }
     if (!transfer?._id) return;
     const isIncoming = user.location === transfer.destinationLocation;
     const isInvoiceRequest = user.location?.trim().toLowerCase() === "head office" && ["awaiting_head_office", "invoice_uploaded"].includes(transfer.status);
@@ -675,10 +680,11 @@ function Dashboard({ user, onLogout }) {
   const isHeadOffice = user.location?.trim().toLowerCase() === "head office";
   const updateDot = (target) => {
     const notification = notifications.find((entry) => {
-      if (entry.read || !entry.transfer) return false;
-      if (target === "incoming") return entry.transfer.destinationLocation === user.location;
-      if (target === "invoiceRequests") return isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer.status);
-      return entry.transfer.destinationLocation !== user.location && !(isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer.status));
+      if (entry.read || (!entry.transfer && !entry.aod)) return false;
+      if (target === "incoming") return entry.transfer?.destinationLocation === user.location;
+      if (target === "invoiceRequests") return isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer?.status);
+      if (target === "aodRequests") return isHeadOffice && entry.aod?.status === "ready";
+      return Boolean(entry.transfer) && entry.transfer.destinationLocation !== user.location && !(isHeadOffice && ["awaiting_head_office", "invoice_uploaded"].includes(entry.transfer.status));
     });
     if (!notification) return "";
     if (notification.transfer?.status === "awaiting_destination") return "red";
@@ -713,6 +719,7 @@ function Dashboard({ user, onLogout }) {
           </a>
           <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transport</span>{updateDot("transport") && <i className={`nav-update-dot ${updateDot("transport")}`} />}</a>
           {isHeadOffice && <a href="#invoice-requests" className={page === "invoiceRequests" ? "active" : ""} onClick={(event) => navigate("invoiceRequests", event)}><FaFileInvoice /><span>Invoice Requests</span>{updateDot("invoiceRequests") && <i className={`nav-update-dot ${updateDot("invoiceRequests")}`} />}</a>}
+          {isHeadOffice && <a href="#aod-requests" className={page === "aodRequests" ? "active" : ""} onClick={(event) => navigate("aodRequests", event)}><FaFileInvoice /><span>AOD Ready Requests</span>{updateDot("aodRequests") && <i className={`nav-update-dot ${updateDot("aodRequests")}`} />}</a>}
           <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span>{updateDot("incoming") && <i className={`nav-update-dot ${updateDot("incoming")}`} />}</a>
           <a href="#aod" className={page === "aod" ? "active" : ""} onClick={(event) => navigate("aod", event)}><FaFileInvoice /><span>Raise AOD</span></a>
           {user.role === "super_admin" && (
@@ -747,6 +754,7 @@ function Dashboard({ user, onLogout }) {
                 <FaFileInvoice />
                 <span>Transaction Report</span>
               </a>
+              <a className={page === "aodReports" ? "active" : ""} onClick={() => navigate("aodReports")}><FaFileInvoice /><span>AOD Reports</span></a>
             </>
           )}
         </nav>
@@ -813,6 +821,8 @@ function Dashboard({ user, onLogout }) {
         {page === "invoiceRequests" && <TransportPage user={user} locations={locations} invoiceRequests highlightTransferId={selectedTransferId} />}
         {page === "incoming" && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} />}
         {page === "aod" && <AodPage user={user} locations={locations} />}
+        {page === "aodRequests" && <AodWorkPage locations={locations} />}
+        {user.role === "super_admin" && page === "aodReports" && <AodWorkPage reports locations={locations} />}
         {user.role === "super_admin" && page === "heldReports" && <HoldReportPage locations={locations} />}
         {user.role === "super_admin" && page === "transactionReports" && <TransactionReportPage locations={locations} />}
         {page === "dashboard" && (
