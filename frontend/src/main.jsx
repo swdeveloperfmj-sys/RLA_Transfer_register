@@ -517,6 +517,12 @@ function Dashboard({ user, onLogout }) {
     return () => window.clearTimeout(timer);
   }, [notificationsOpen]);
   useEffect(() => {
+    if (!notificationsOpen) return undefined;
+    const closeOnEscape = (event) => { if (event.key === "Escape") setNotificationsOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [notificationsOpen]);
+  useEffect(() => {
     localStorage.setItem("rla-theme", darkMode ? "dark" : "light");
   }, [darkMode]);
   const enablePhoneAlerts = async () => {
@@ -707,6 +713,15 @@ function Dashboard({ user, onLogout }) {
             <img src={rlaLogo} className="sidebar-logo-image" alt="RLA Transfer" />
             <span>RLA</span>
           </div>
+          <div className="notification-menu mobile-sidebar-notifications" onClick={(event) => event.stopPropagation()}>
+            <button className="notification-bell" onClick={() => setNotificationsOpen((open) => !open)} title="Notifications" aria-label="Notifications">
+              <FaBell />{unreadCount > 0 && <b>{unreadCount > 9 ? "9+" : unreadCount}</b>}
+            </button>
+            {notificationsOpen && <section className="notification-panel" aria-label="Recent notifications">
+              <div className="notification-panel-title"><div><strong>Notifications</strong><span>{unreadCount ? `${unreadCount} unread` : "You're all caught up"}</span></div><div className="notification-panel-controls"><small>Last 2 days</small><button type="button" className="notification-close" onClick={() => setNotificationsOpen(false)} aria-label="Close notifications"><FaXmark /></button></div></div>
+              {notifications.length ? notifications.map((notification) => <button key={notification._id} className={`notification-item ${notification.read ? "" : "unread"}`} onClick={() => openNotification(notification)}><i aria-hidden="true"><FaBell /></i><span>{notification.message}<small>{new Date(notification.createdAt).toLocaleString()}</small></span>{!notification.read && <em aria-label="Unread notification" />}</button>) : <p className="notification-empty">No recent notifications.</p>}
+            </section>}
+          </div>
           {!sidebarCollapsed && <button
             className="collapse-toggle"
             onClick={(event) => { event.stopPropagation(); setSidebarCollapsed(true); }}
@@ -810,7 +825,7 @@ function Dashboard({ user, onLogout }) {
             {notificationsOpen && <section className="notification-panel" aria-label="Recent notifications">
               <div className="notification-panel-title">
                 <div><strong>Notifications</strong><span>{unreadCount ? `${unreadCount} unread` : "You're all caught up"}</span></div>
-                <small>Last 2 days</small>
+                <div className="notification-panel-controls"><small>Last 2 days</small><button type="button" className="notification-close" onClick={() => setNotificationsOpen(false)} aria-label="Close notifications" title="Close notifications"><FaXmark /></button></div>
               </div>
               {notifications.length ? notifications.map((notification) => <button key={notification._id} className={`notification-item ${notification.read ? "" : "unread"}`} onClick={() => openNotification(notification)}>
                 <i aria-hidden="true"><FaBell /></i><span>{notification.message}<small>{new Date(notification.createdAt).toLocaleString()}</small></span>{!notification.read && <em aria-label="Unread notification" />}

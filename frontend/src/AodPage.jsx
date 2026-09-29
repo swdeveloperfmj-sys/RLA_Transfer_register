@@ -51,6 +51,7 @@ export default function AodPage({ user, locations }) {
       <table className="aod-goods"><thead><tr><th>CODE NO.</th><th>DESCRIPTION OF GOODS / SERVICES</th><th>PACKAGING</th><th>QUANTITY</th></tr></thead><tbody>{generated.items.map((item, index) => <tr key={index}><td>{item.code || "—"}</td><td>{item.description || "—"}</td><td>{item.packaging || "—"}</td><td>{item.quantity}</td></tr>)}</tbody></table>
       <div className="aod-sign-row"><span>Approved by (Name & Signature)</span><span>Collected by (Name & Signature)</span></div>
       <footer>Location: 62 Galle Road, Henamulla, Panadura, 12550, Sri Lanka</footer>
+      <footer>Location: 62 Galle Road, Henamulla, Panadura, 12550, Sri Lanka</footer>
     </article>
   </section>;
 
