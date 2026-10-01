@@ -323,12 +323,12 @@ export default function TransportPage({ user, locations, incoming = false, invoi
               {incoming
                 ? "Incoming transports"
                 : invoiceRequests
-                  ? "Invoice requests"
+                  ? "TOG requests"
                   : "Transport tracker"}
             </h2>
             <p>
               {invoiceRequests
-                ? "Review location requests and attach the correct invoice."
+                ? "Review location requests and attach the correct TOG."
                 : "Track each request from approval to delivery."}
             </p>
           </div>
@@ -420,11 +420,11 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                     rel="noreferrer"
                     className="invoice-view"
                   >
-                    <FaFileInvoice /> View invoice
+                    <FaFileInvoice /> View TOD
                   </a>
                 ) : (
                   <span className="invoice-pending">
-                    <FaFileInvoice /> Invoice pending
+                    <FaFileInvoice /> TOG pending
                   </span>
                 )}
                 {headOffice && invoiceRequests &&
@@ -435,8 +435,8 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                       <FaCloudArrowUp />
                       <span>
                         {transfer.invoiceFile
-                          ? "Replace invoice"
-                          : "Upload invoice"}
+                          ? "Replace TOG"
+                          : "Upload TOG"}
                       </span>
                       <small>PDF, JPG or PNG · Max 4MB</small>
                       <input

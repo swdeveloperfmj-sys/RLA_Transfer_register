@@ -177,7 +177,7 @@ router.post('/:id/invoice', upload.single('invoice'), async (req, res) => {
   const oldStorageKey = transfer.invoiceStorageKey;
   transfer.invoiceFile = invoiceUrl; transfer.invoiceStorageKey = storageKey; transfer.invoiceOriginalName = req.file.originalname; transfer.invoiceUploadedAt = new Date(); transfer.status = 'invoice_uploaded'; await transfer.save();
   if (oldStorageKey) await deleteInvoiceFromR2(oldStorageKey).catch(error => console.error('Could not remove replaced R2 invoice:', error.message));
-  await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Invoice ready for dispatch', message: `Invoice uploaded for transport to ${transfer.destinationLocation}. Review and confirm dispatch.`, transfer: transfer._id });
+  await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'TOG uploaded for dispatch', message: `TOG uploaded for transport to ${transfer.destinationLocation}. Review and confirm dispatch.`, transfer: transfer._id });
   res.json(transfer);
 });
 router.post('/:id/dispatch', async (req, res) => {
