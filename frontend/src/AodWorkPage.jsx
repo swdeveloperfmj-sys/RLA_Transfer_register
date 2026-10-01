@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { FaFileInvoice } from "react-icons/fa6";
+import { FaDownload, FaFileInvoice, FaXmark } from "react-icons/fa6";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import fmjHoldingsLogo from "../assets/FMJ Holdings Logo_.jpg";
@@ -147,7 +147,11 @@ export default function AodWorkPage({
   const reportScale =
     typeof window === "undefined"
       ? 1
-      : Math.min(1, Math.max(0.36, (window.innerWidth - 28) / 794));
+      : Math.min(
+          1.35,
+          Math.max(0.36, (window.innerWidth - 80) / 794),
+          Math.max(0.36, (window.innerHeight - 100) / 559),
+        );
   const openAod = (aod) => {
     const mobile = window.matchMedia("(max-width: 760px)").matches;
     setViewing(aod);
@@ -361,128 +365,147 @@ export default function AodWorkPage({
             setAutoDownloading(false);
           }}
         >
-          <div
-            className="aod-report-actions"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setViewing(null);
-                setAutoDownloading(false);
-              }}
+          <div className="aod-report-preview">
+            <div
+              className="aod-report-actions"
+              onClick={(event) => event.stopPropagation()}
             >
-              Close
-            </button>
-            <button type="button" onClick={() => window.print()}>
-              Download PDF
-            </button>
-          </div>
-          <article
-            className="aod-sheet aod-report-sheet"
-            style={{
-              transform: autoDownloading ? "none" : `scale(${reportScale})`,
-              transformOrigin: "top center",
-              marginBottom: autoDownloading
-                ? 0
-                : `${-(1 - reportScale) * 559}px`,
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="aod-sheet-top">
-              <section className="aod-company-block">
-                <h2>FMJ Plastics (Pvt) Ltd.</h2>
-                <p>
-                  289 Galle Road, Henamulla,
-                  <br />
-                  Panadura, 12550, Sri Lanka.
-                </p>
-                <dl>
-                  <dt>Tel</dt>
-                  <dd>
-                    038-2232976, 038-2238217
+              <div className="aod-report-toolbar-title">
+                <FaFileInvoice />
+                <span>AOD Preview</span>
+              </div>
+              <div className="aod-report-toolbar-buttons">
+                <button
+                  className="aod-close-preview"
+                  type="button"
+                  onClick={() => {
+                    setViewing(null);
+                    setAutoDownloading(false);
+                  }}
+                >
+                  <FaXmark /> Close
+                </button>
+                <button
+                  className="aod-download-pdf"
+                  type="button"
+                  onClick={() => window.print()}
+                >
+                  <FaDownload /> Download PDF
+                </button>
+              </div>
+            </div>
+            <article
+              className="aod-sheet aod-report-sheet"
+              style={{
+                transform: autoDownloading ? "none" : `scale(${reportScale})`,
+                transformOrigin: "top center",
+                marginBottom: autoDownloading
+                  ? 0
+                  : `${-(1 - reportScale) * 559}px`,
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="aod-sheet-top">
+                <section className="aod-company-block">
+                  <h3 style={{ fontSize: "14px" }}>
+                    Royal Lanka Agencies (Pvt) Ltd.
+                  </h3>
+                  <p>
+                    289 Galle Road, Henamulla,
                     <br />
-                    038-7211928
-                  </dd>
-                  <dt>Fax</dt>
-                  <dd>038-2298200</dd>
-                  <dt>E-mail</dt>
-                  <dd>fmjholdings@fmjgp.lk</dd>
-                  <dt>Web</dt>
-                  <dd>www.fmjgp.lk</dd>
-                </dl>
-              </section>
-              <section className="aod-customer-block">
-                <div className="aod-doc-number">
-                  <b>AOD No.</b>
-                  <strong>{viewing.number}</strong>
-                </div>
-                <div className="aod-destination">
-                  <b>Customer / Destination Name & Address</b>
-                  <strong>{viewing.customerName}</strong>
-                  <span>{viewing.customerAddress || "—"}</span>
-                </div>
-              </section>
-              <section className="aod-brand-block">
-                <h1>ADVICE OF DESPATCH</h1>
-                <i>Please receive the following from</i>
-                <img className="aod-rl-logo" src={rlLogo} alt="R L Plastics" />
-                <small>A Member of</small>
-                <img
-                  className="aod-fmj-logo"
-                  src={fmjHoldingsLogo}
-                  alt="FMJ Holdings"
-                />
-                <div className="aod-date">
-                  <b>AOD Date</b>
-                  <span>
-                    {new Date(viewing.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-              </section>
-            </div>
-            <div className="aod-details-row">
-              <div>
-                <b>From</b>
-                <span>{viewing.from}</span>
+                    Panadura, 12550, Sri Lanka.
+                  </p>
+                  <dl>
+                    <dt>Tel</dt>
+                    <dd>
+                      038-2232976, 038-2238217
+                      <br />
+                      038-7211928
+                    </dd>
+                    <dt>Fax</dt>
+                    <dd>038-2298200</dd>
+                    <dt>E-mail</dt>
+                    <dd>fmjholdings@fmjgp.lk</dd>
+                    <dt>Web</dt>
+                    <dd>www.fmjgp.lk</dd>
+                  </dl>
+                </section>
+                <section className="aod-customer-block">
+                  <div className="aod-doc-number">
+                    <b>AOD No.</b>
+                    <strong>{viewing.number}</strong>
+                  </div>
+                  <div className="aod-destination">
+                    <b>Customer / Destination Name & Address</b>
+                    <strong>{viewing.customerName}</strong>
+                    <span>{viewing.customerAddress || "—"}</span>
+                  </div>
+                </section>
+                <section className="aod-brand-block">
+                  <h1>ADVICE OF DESPATCH</h1>
+                  <i>Please receive the following from</i>
+                  <img
+                    className="aod-rl-logo"
+                    src={rlLogo}
+                    alt="R L Plastics"
+                  />
+                  <small>A Member of</small>
+                  <img
+                    className="aod-fmj-logo"
+                    src={fmjHoldingsLogo}
+                    alt="FMJ Holdings"
+                  />
+                  <div className="aod-date">
+                    <b>AOD Date</b>
+                    <span>
+                      {new Date(viewing.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </section>
               </div>
-              <div>
-                <b>To</b>
-                <span>{viewing.to}</span>
+              <div className="aod-details-row">
+                <div>
+                  <b>From</b>
+                  <span>{viewing.from}</span>
+                </div>
+                <div>
+                  <b>To</b>
+                  <span>{viewing.to}</span>
+                </div>
+                <div>
+                  <b>Despatched by</b>
+                  <span>{viewing.dispatchedBy}</span>
+                </div>
               </div>
-              <div>
-                <b>Despatched by</b>
-                <span>{viewing.dispatchedBy}</span>
-              </div>
-            </div>
-            <table className="aod-goods">
-              <thead>
-                <tr>
-                  <th>CODE NO.</th>
-                  <th>DESCRIPTION OF GOODS / SERVICES</th>
-                  <th>PACKAGING</th>
-                  <th>QUANTITY</th>
-                </tr>
-              </thead>
-              <tbody>
-                {viewing.items.map((item, index) => (
-                  <tr key={index}>
-                    <td>{item.code || "—"}</td>
-                    <td>{item.description || "—"}</td>
-                    <td>{item.packaging || "—"}</td>
-                    <td>{item.quantity}</td>
+              <table className="aod-goods">
+                <thead>
+                  <tr>
+                    <th>CODE NO.</th>
+                    <th>DESCRIPTION OF GOODS / SERVICES</th>
+                    <th>PACKAGING</th>
+                    <th>QUANTITY</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="aod-sign-row">
-              <span>Approved by (Name & Signature)</span>
-              <span>Collected by (Name & Signature)</span>
-            </div>
-            <footer>
-              Location: 62 Galle Road, Henamulla, Panadura, 12550, Sri Lanka
-            </footer>
-          </article>
+                </thead>
+                <tbody>
+                  {viewing.items.map((item, index) => (
+                    <tr key={index}>
+                      <td>{item.code || "—"}</td>
+                      <td>{item.description || "—"}</td>
+                      <td>{item.packaging || "—"}</td>
+                      <td>{item.quantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="aod-sign-row">
+                <span>Approved by (Name & Signature)</span>
+                <span>Collected by (Name & Signature)</span>
+              </div>
+              <footer>
+                Location: 62 Galle Road, Henamulla, Panadura, 12550, Sri Lanka
+              </footer>
+            </article>
+          </div>
         </div>
       )}
     </section>

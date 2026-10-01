@@ -92,7 +92,9 @@ export default function AodPage({ user, locations }) {
         <article className="aod-sheet">
           <div className="aod-sheet-top">
             <section className="aod-company-block">
-              <h2>FMJ Plastics (Pvt) Ltd.</h2>
+              <h3 style={{ fontSize: "14px" }}>
+                Royal Lanka Agencies (Pvt) Ltd.
+              </h3>
               <p>
                 289 Galle Road, Henamulla,
                 <br />
