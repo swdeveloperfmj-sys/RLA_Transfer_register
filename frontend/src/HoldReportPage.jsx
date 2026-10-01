@@ -4,6 +4,11 @@ import { FaDownload, FaFilter, FaPauseCircle } from "react-icons/fa";
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const today = new Date().toISOString().slice(0, 10);
 const month = today.slice(0, 7);
+const monthRange = (value) => {
+  const [year, monthNumber] = value.split("-").map(Number);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  return { from: `${value}-01`, to: `${value}-${String(lastDay).padStart(2, "0")}` };
+};
 
 const pdfEscape = (value) => String(value ?? "").replace(/[\\()]/g, "\\$&").replace(/[^\x20-\x7E]/g, "?");
 const groupRows = (rows) => Object.values(rows.reduce((groups, row) => {
@@ -42,7 +47,7 @@ const downloadPdf = (rows, label, location = "") => {
 
 export default function HoldReportPage({ locations = [] }) {
   const [mode, setMode] = useState("daily"), [date, setDate] = useState(today), [selectedMonth, setSelectedMonth] = useState(month), [fromDate, setFromDate] = useState(today), [toDate, setToDate] = useState(today), [location, setLocation] = useState(""), [rows, setRows] = useState([]), [error, setError] = useState(""), [loading, setLoading] = useState(false);
-  const range = () => mode === "daily" ? { from: date, to: date, label: date } : mode === "monthly" ? { from: `${selectedMonth}-01`, to: new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).toISOString().slice(0, 10), label: selectedMonth } : { from: fromDate, to: toDate, label: `${fromDate}-to-${toDate}` };
+  const range = () => mode === "daily" ? { from: date, to: date, label: date } : mode === "monthly" ? { ...monthRange(selectedMonth), label: selectedMonth } : { from: fromDate, to: toDate, label: `${fromDate}-to-${toDate}` };
   const load = async () => {
     setLoading(true); setError("");
     try {

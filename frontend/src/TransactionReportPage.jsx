@@ -4,6 +4,12 @@ import { FaDownload, FaFilter } from "react-icons/fa";
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const today = new Date().toISOString().slice(0, 10);
 const month = today.slice(0, 7);
+const monthRange = (value) => {
+  const [year, monthNumber] = value.split("-").map(Number);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  return { from: `${value}-01`, to: `${value}-${String(lastDay).padStart(2, "0")}` };
+};
+const statusLabel = (status) => status === "invoice_uploaded" ? "TOG uploaded" : status.replaceAll("_", " ");
 const itemList = (items, includeRemark = false) => items.length
   ? items.map((item) => <span key={`${item.itemCode}-${item.quantity}`} className={includeRemark ? "held-item" : "report-item"}>{item.itemCode} × {item.quantity}{includeRemark && item.remark ? ` — ${item.remark}` : ""}</span>)
   : <span className="no-items">—</span>;
@@ -20,7 +26,7 @@ const downloadPdf = (rows, { label, location }) => {
     page.forEach((row) => {
       const sent = row.sentItems.map((item) => `${item.itemCode} x ${item.quantity}`).join(", ");
       const held = row.heldItems.map((item) => `${item.itemCode} x ${item.quantity}${item.remark ? ` (${item.remark})` : ""}`).join(", ") || "None";
-      commands.push("0.96 0.98 0.98 rg", `40 ${y - 102} 515 96 re f`, "0.78 0.84 0.83 RG 0.5 w", `40 ${y - 102} 515 96 re S`, "0.05 0.28 0.25 rg", text("F2", 10, 52, y - 18, row.referenceNumber), text("F1", 9, 185, y - 18, `${row.sourceLocation}  ->  ${row.destinationLocation}`), text("F2", 8, 52, y - 38, "SENT ITEMS:"), text("F1", 8, 115, y - 38, sent.slice(0, 84)), text("F2", 8, 52, y - 56, "HELD ITEMS:"), text("F1", 8, 115, y - 56, held.slice(0, 84)), text("F2", 8, 52, y - 78, "STATUS:"), text("F1", 8, 115, y - 78, row.status.replaceAll("_", " ").toUpperCase()), text("F1", 8, 390, y - 78, new Date(row.createdAt).toLocaleDateString()));
+      commands.push("0.96 0.98 0.98 rg", `40 ${y - 102} 515 96 re f`, "0.78 0.84 0.83 RG 0.5 w", `40 ${y - 102} 515 96 re S`, "0.05 0.28 0.25 rg", text("F2", 10, 52, y - 18, row.referenceNumber), text("F1", 9, 185, y - 18, `${row.sourceLocation}  ->  ${row.destinationLocation}`), text("F2", 8, 52, y - 38, "SENT ITEMS:"), text("F1", 8, 115, y - 38, sent.slice(0, 84)), text("F2", 8, 52, y - 56, "HELD ITEMS:"), text("F1", 8, 115, y - 56, held.slice(0, 84)), text("F2", 8, 52, y - 78, "STATUS:"), text("F1", 8, 115, y - 78, statusLabel(row.status).toUpperCase()), text("F1", 8, 390, y - 78, new Date(row.createdAt).toLocaleDateString()));
       y -= 112;
     });
     commands.push("0.35 0.4 0.46 rg", text("F1", 8, 40, 28, "RLA Operations - Confidential internal report"), text("F1", 8, 510, 28, `Page ${index + 1} of ${pages.length}`));
@@ -38,7 +44,7 @@ const downloadPdf = (rows, { label, location }) => {
 
 export default function TransactionReportPage({ locations = [] }) {
   const [mode, setMode] = useState("daily"), [date, setDate] = useState(today), [selectedMonth, setSelectedMonth] = useState(month), [fromDate, setFromDate] = useState(today), [toDate, setToDate] = useState(today), [location, setLocation] = useState(""), [rows, setRows] = useState([]), [error, setError] = useState(""), [loading, setLoading] = useState(false);
-  const range = () => mode === "daily" ? { from: date, to: date } : mode === "monthly" ? { from: `${selectedMonth}-01`, to: new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5)), 0).toISOString().slice(0, 10) } : { from: fromDate, to: toDate };
+  const range = () => mode === "daily" ? { from: date, to: date } : mode === "monthly" ? monthRange(selectedMonth) : { from: fromDate, to: toDate };
   const load = async () => {
     setLoading(true); setError("");
     try {
@@ -55,6 +61,6 @@ export default function TransactionReportPage({ locations = [] }) {
     <div className="panel-heading"><span className="eyebrow">SUPER ADMIN REPORT</span><h2>Transaction report</h2><p>Review each transport request, its sent items, held items, and current status.</p></div>
     <div className="report-controls"><select value={mode} onChange={(event) => setMode(event.target.value)}><option value="daily">Daily</option><option value="monthly">Monthly</option><option value="range">Date range</option></select><select value={location} onChange={(event) => setLocation(event.target.value)}><option value="">All sent locations</option>{locations.map((item) => <option key={item._id} value={item.name}>{item.name}{item.code ? ` (${item.code})` : ""}</option>)}</select>{mode === "daily" ? <input type="date" value={date} onChange={(event) => setDate(event.target.value)} /> : mode === "monthly" ? <input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /> : <><input type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} /><span>to</span><input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} /></>}<button onClick={load}><FaFilter /> {loading ? "Loading..." : "Apply filter"}</button><button className="pdf-download" disabled={!rows.length} onClick={() => downloadPdf(rows, { label: `${range().from}-to-${range().to}`, location })}><FaDownload /> Download PDF</button></div>
     {error && <div className="error">{error}</div>}
-    <div className="transaction-table-wrap"><table className="transaction-table"><thead><tr><th>Transaction no.</th><th>Sent location</th><th>Received location</th><th>Sent items</th><th>Held items</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><strong>{row.referenceNumber}</strong><small>{new Date(row.createdAt).toLocaleDateString()}</small></td><td>{row.sourceLocation}</td><td>{row.destinationLocation}</td><td>{itemList(row.sentItems)}</td><td>{itemList(row.heldItems, true)}</td><td><span className={`transaction-status status-${row.status}`}>{row.status.replaceAll("_", " ")}</span></td></tr>)}</tbody></table>{!loading && !rows.length && <p className="transfer-empty">No transactions found for this filter.</p>}</div>
+    <div className="transaction-table-wrap"><table className="transaction-table"><thead><tr><th>Transaction no.</th><th>Sent location</th><th>Received location</th><th>Sent items</th><th>Held items</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><strong>{row.referenceNumber}</strong><small>{new Date(row.createdAt).toLocaleDateString()}</small></td><td>{row.sourceLocation}</td><td>{row.destinationLocation}</td><td>{itemList(row.sentItems)}</td><td>{itemList(row.heldItems, true)}</td><td><span className={`transaction-status status-${row.status}`}>{statusLabel(row.status)}</span></td></tr>)}</tbody></table>{!loading && !rows.length && <p className="transfer-empty">No transactions found for this filter.</p>}</div>
   </section>;
 }
