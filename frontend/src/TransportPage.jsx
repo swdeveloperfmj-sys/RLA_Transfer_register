@@ -201,7 +201,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       : transfers.filter((t) => t.sourceLocation === user.location);
   const statusLabels = {
     awaiting_head_office: "Waiting for invoice",
-    invoice_uploaded: "Invoice ready",
+    invoice_uploaded: "TOG uploaded",
     awaiting_destination: "In transit",
     completed: "Completed",
   };
