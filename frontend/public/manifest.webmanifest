@@ -1,7 +1,7 @@
 {
   "name": "RLA Operations Portal",
   "short_name": "RLA Operations",
-  "description": "RLA transport and location operations.",
+  "description": "RLA transfer and location operations.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#14243b",

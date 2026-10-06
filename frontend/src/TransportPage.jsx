@@ -204,6 +204,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
     invoice_uploaded: "TOG uploaded",
     awaiting_destination: "In transit",
     completed: "Completed",
+    closed: "Not Transferable",
   };
   const statusSteps = {
     awaiting_head_office: 1,
@@ -218,7 +219,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
         <section className="panel transport-form">
           <div className="panel-heading">
             <span className="eyebrow">NEW TRANSFER</span>
-            <h2>Create transport request</h2>
+            <h2>Create transfer request</h2>
             <p>Choose a destination and list every item in this shipment.</p>
           </div>
           <form onSubmit={create}>
@@ -310,7 +311,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
             </button>
             </>}
             <button type="submit" className="send-transfer" disabled={creating}>
-              <FaTruckFast /> {creating ? "Sending request…" : "Send transport request"}
+              <FaTruckFast /> {creating ? "Sending request…" : "Send transfer request"}
             </button>
           </form>
         </section>
@@ -321,10 +322,10 @@ export default function TransportPage({ user, locations, incoming = false, invoi
             <span className="eyebrow">OPERATIONS</span>
             <h2>
               {incoming
-                ? "Incoming transports"
+                ? "Incoming transfers"
                 : invoiceRequests
                   ? "TOG requests"
-                  : "Transport tracker"}
+                  : "Transfer tracker"}
             </h2>
             <p>
               {invoiceRequests
@@ -466,7 +467,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
           {!visible.length && (
             <div className="transfer-empty">
               <FaTruckFast />
-              <h3>No transport records</h3>
+              <h3>No transfer records</h3>
               <p>New requests will appear here.</p>
             </div>
           )}

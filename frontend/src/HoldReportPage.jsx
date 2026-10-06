@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { FaDownload, FaFilter, FaPauseCircle } from "react-icons/fa";
+import { FaDownload, FaFilter } from "react-icons/fa";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const today = new Date().toISOString().slice(0, 10);
@@ -24,7 +24,7 @@ const downloadPdf = (rows, label, location = "") => {
   pages.forEach((page, index) => {
     const pageId = 3 + index * 2, contentId = pageId + 1;
     const text = (font, size, x, y, value) => `BT /${font} ${size} Tf ${x} ${y} Td (${pdfEscape(value)}) Tj ET`;
-    const commands = ["0.06 0.34 0.29 rg 0 790 595 52 re f", "1 1 1 rg", text("F2", 20, 40, 810, "RLA OPERATIONS"), text("F1", 10, 40, 795, "Held Transport Items Report"), "0.15 0.18 0.24 rg", text("F1", 9, 40, 768, `Report period: ${label}`), text("F1", 9, 40, 753, `Sent location: ${location || "All locations"}`), text("F1", 9, 430, 768, `Generated: ${new Date().toLocaleDateString()}`), "0.06 0.34 0.29 rg 40 730 515 22 re f", "1 1 1 rg", text("F2", 8, 48, 738, "JOB / ROUTE"), text("F2", 8, 200, 738, "HELD ITEMS"), text("F2", 8, 355, 738, "HELD BY"), text("F2", 8, 465, 738, "DATE")];
+    const commands = ["0.06 0.34 0.29 rg 0 790 595 52 re f", "1 1 1 rg", text("F2", 20, 40, 810, "RLA OPERATIONS"), text("F1", 10, 40, 795, "Held Transfer Items Report"), "0.15 0.18 0.24 rg", text("F1", 9, 40, 768, `Report period: ${label}`), text("F1", 9, 40, 753, `Sent location: ${location || "All locations"}`), text("F1", 9, 430, 768, `Generated: ${new Date().toLocaleDateString()}`), "0.06 0.34 0.29 rg 40 730 515 22 re f", "1 1 1 rg", text("F2", 8, 48, 738, "JOB / ROUTE"), text("F2", 8, 200, 738, "HELD ITEMS"), text("F2", 8, 355, 738, "HELD BY"), text("F2", 8, 465, 738, "DATE")];
     let y = 730;
     page.forEach((job, rowIndex) => {
       const rowHeight = 72, items = job.items.map((item) => `${item.itemCode} x ${item.quantity}`).join(", ");
@@ -46,7 +46,7 @@ const downloadPdf = (rows, label, location = "") => {
 };
 
 export default function HoldReportPage({ locations = [] }) {
-  const [mode, setMode] = useState("daily"), [date, setDate] = useState(today), [selectedMonth, setSelectedMonth] = useState(month), [fromDate, setFromDate] = useState(today), [toDate, setToDate] = useState(today), [location, setLocation] = useState(""), [rows, setRows] = useState([]), [error, setError] = useState(""), [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("daily"), [date, setDate] = useState(today), [selectedMonth, setSelectedMonth] = useState(month), [fromDate, setFromDate] = useState(today), [toDate, setToDate] = useState(today), [location, setLocation] = useState(""), [rows, setRows] = useState([]), [error, setError] = useState(""), [loading, setLoading] = useState(false), [expandedId, setExpandedId] = useState("");
   const range = () => mode === "daily" ? { from: date, to: date, label: date } : mode === "monthly" ? { ...monthRange(selectedMonth), label: selectedMonth } : { from: fromDate, to: toDate, label: `${fromDate}-to-${toDate}` };
   const load = async () => {
     setLoading(true); setError("");
@@ -60,9 +60,28 @@ export default function HoldReportPage({ locations = [] }) {
   };
   useEffect(() => { load(); }, [mode, date, selectedMonth, fromDate, toDate, location]);
   return <section className="hold-report">
-    <div className="panel-heading"><span className="eyebrow">SUPER ADMIN REPORT</span><h2>Held transport items</h2><p>Review held items, who placed them on hold, and the stated reason.</p></div>
+    <div className="panel-heading"><span className="eyebrow">SUPER ADMIN REPORT</span><h2>Held transfer items</h2><p>Review held items, who placed them on hold, and the stated reason.</p></div>
     <div className="report-controls"><select value={mode} onChange={(e) => setMode(e.target.value)}><option value="daily">Daily</option><option value="monthly">Monthly</option><option value="range">Date range</option></select><select value={location} onChange={(e) => setLocation(e.target.value)} aria-label="Filter by sent location"><option value="">All sent locations</option>{locations.map((item) => <option key={item._id} value={item.name}>{item.name}{item.code ? ` (${item.code})` : ""}</option>)}</select>{mode === "daily" ? <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /> : mode === "monthly" ? <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} /> : <><input type="date" value={fromDate} max={toDate} onChange={(e) => setFromDate(e.target.value)} /><span>to</span><input type="date" value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} /></>}<button onClick={load}><FaFilter /> {loading ? "Loading…" : "Apply filter"}</button><button className="pdf-download" disabled={!rows.length} onClick={() => downloadPdf(rows, range().label, location)}><FaDownload /> Download PDF</button></div>
     {error && <div className="error">{error}</div>}
-    <div className="held-report-list">{groupRows(rows).map((job) => <article key={job.transferId}><div><FaPauseCircle /><strong>{job.sourceLocation} → {job.destinationLocation}</strong><span>Requested by: {job.requestedBy?.name || "Unknown"}</span></div><div className="held-job-items">{job.items.map((item) => <span key={`${item.itemCode}-${item.quantity}`}>{item.itemCode} <b>× {item.quantity}</b></span>)}</div><p><b>Held by:</b> {job.heldBy?.name || "Unknown"}<br /><b>Held at:</b> {new Date(job.heldAt).toLocaleString()}<br /><b>Remark:</b> {job.holdRemark}</p></article>)}{!loading && !rows.length && <p className="transfer-empty">No held items for this period.</p>}</div>
+    <div className="report-summary-wrap">
+      <div className="report-table-scroll">
+      <table className="report-summary-table">
+        <thead><tr><th>Route</th><th>Held items</th><th>Held by</th><th>Date</th></tr></thead>
+        <tbody>{groupRows(rows).map((job) => <React.Fragment key={job.transferId}>
+          <tr className="report-summary-row" onDoubleClick={() => setExpandedId(expandedId === String(job.transferId) ? "" : String(job.transferId))} title="Double-click to view full details">
+            <td><strong>{job.sourceLocation} → {job.destinationLocation}</strong><small>Requested by: {job.requestedBy?.name || "Unknown"}</small></td><td>{job.items.length}</td><td>{job.heldBy?.name || "Unknown"}</td><td>{new Date(job.heldAt).toLocaleDateString()}</td>
+          </tr>
+          {expandedId === String(job.transferId) && <tr className="report-detail-row"><td colSpan="4"><div className="report-detail">
+            <div><b>Held at</b><span>{new Date(job.heldAt).toLocaleString()}</span></div>
+            <div><b>Held items</b><div className="held-job-items">{job.items.map((item) => <span key={`${item.itemCode}-${item.quantity}`}>{item.itemCode} <b>× {item.quantity}</b></span>)}</div></div>
+            <div><b>Remarks</b>{job.items.map((item) => <span key={`${item.itemCode}-remark`}>{item.itemCode}: {item.holdRemark || "—"}</span>)}</div>
+          </div></td></tr>}
+        </React.Fragment>)}</tbody>
+      </table>
+      </div>
+      {!loading && !rows.length && <p className="transfer-empty">No held items for this period.</p>}
+      <p className="report-expand-hint">Double-click a row to show or hide its full details.</p>
+      <details className="status-help"><summary aria-label="Held item status help" title="Status help">?</summary><div className="status-help-card"><strong>Held item status guide</strong><dl><div><dt>Held</dt><dd>The item was not approved for transfer. Double-click its row to see who held it and the reason.</dd></div></dl></div></details>
+    </div>
   </section>;
 }

@@ -634,7 +634,7 @@ function Dashboard({ user, onLogout }) {
     locations: "Locations",
     users: "Users",
     roles: "Roles",
-    transport: "Transport",
+    transport: "Transfer",
     invoiceRequests: "TOG Requests",
     heldReports: "Held Item Reports",
     transactionReports: "Transaction Report",
@@ -642,9 +642,9 @@ function Dashboard({ user, onLogout }) {
     myAods: "My Raised AODs",
     aodRequests: "AOD Ready Requests",
     aodReturns: "AOD Returns",
-    aodTransport: "AOD Transport Requests",
+    aodTransport: "AOD Transfer Requests",
     aodReports: "AOD Reports",
-    incoming: "Incoming transport",
+    incoming: "Incoming transfer",
   };
   const markTabNotificationsRead = (target) => {
     const isHeadOfficeUser = user.location?.trim().toLowerCase() === "head office";
@@ -731,10 +731,10 @@ function Dashboard({ user, onLogout }) {
             <ShieldCheck />
             <span>Dashboard</span>
           </a>
-          <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transport</span>{updateDot("transport") && <i className={`nav-update-dot ${updateDot("transport")}`} />}</a>
+          <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transfer</span>{updateDot("transport") && <i className={`nav-update-dot ${updateDot("transport")}`} />}</a>
           {isHeadOffice && <a href="#invoice-requests" className={page === "invoiceRequests" ? "active" : ""} onClick={(event) => navigate("invoiceRequests", event)}><FaFileInvoice /><span>TOG Requests</span>{updateDot("invoiceRequests") && <i className={`nav-update-dot ${updateDot("invoiceRequests")}`} />}</a>}
           {!isHeadOffice && <a href="#aod-requests" className={page === "aodRequests" ? "active" : ""} onClick={(event) => navigate("aodRequests", event)}><FaFileInvoice /><span>AOD Destination Requests</span>{updateDot("aodRequests") && <i className={`nav-update-dot ${updateDot("aodRequests")}`} />}</a>}
-          {!isHeadOffice && <a href="#aod-transport" className={page === "aodTransport" ? "active" : ""} onClick={(event) => navigate("aodTransport", event)}><FaFileInvoice /><span>AOD Transport Requests</span>{updateDot("aodTransport") && <i className={`nav-update-dot ${updateDot("aodTransport")}`} />}</a>}
+          {!isHeadOffice && <a href="#aod-transport" className={page === "aodTransport" ? "active" : ""} onClick={(event) => navigate("aodTransport", event)}><FaFileInvoice /><span>AOD Transfer Requests</span>{updateDot("aodTransport") && <i className={`nav-update-dot ${updateDot("aodTransport")}`} />}</a>}
           <a href="#aod-returns" className={page === "aodReturns" ? "active" : ""} onClick={(event) => navigate("aodReturns", event)}><FaFileInvoice /><span>AOD Returns</span>{updateDot("aodReturns") && <i className={`nav-update-dot ${updateDot("aodReturns")}`} />}</a>
           <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span>{updateDot("incoming") && <i className={`nav-update-dot ${updateDot("incoming")}`} />}</a>
           <a href="#aod" className={page === "aod" ? "active" : ""} onClick={(event) => navigate("aod", event)}><FaFileInvoice /><span>Raise AOD</span></a>
