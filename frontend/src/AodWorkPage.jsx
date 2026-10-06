@@ -198,7 +198,7 @@ export default function AodWorkPage({
         <div className="panel-heading">
           <span className="eyebrow">
             {reports
-              ? "SUPER ADMIN"
+              ? "OPERATIONS REPORT"
               : mode === "headOffice" || mode === "transport"
                 ? "HEAD OFFICE"
                 : "AOD WORKFLOW"}

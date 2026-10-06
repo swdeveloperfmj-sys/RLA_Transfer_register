@@ -19,6 +19,20 @@ export default function AodPage({ user, locations }) {
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const closeGenerated = () => {
+    setGenerated(null);
+    setEditingId(null);
+    setError("");
+    setForm({
+      number: "",
+      customerName: "",
+      customerAddress: "",
+      from: user.location || "",
+      to: "",
+      dispatchedBy: user.name,
+      items: [{ ...blankItem }],
+    });
+  };
   const setField = (field, value) =>
     setForm((current) => ({ ...current, [field]: value }));
   const setItem = (index, field, value) =>
@@ -88,6 +102,7 @@ export default function AodPage({ user, locations }) {
             Edit details
           </button>
           <button onClick={() => window.print()}>Print AOD</button>
+          <button type="button" className="aod-close-generated" onClick={closeGenerated}>Close</button>
         </div>
         <article className="aod-sheet">
           <div className="aod-sheet-top">

@@ -15,3 +15,23 @@ export const protect = async (req, res, next) => {
 
 export const superAdminOnly = (req, res, next) => req.user.role === 'super_admin'
   ? next() : res.status(403).json({ message: 'Super admin access required.' });
+
+export const hasPermission = (user, permission) => user.role === 'super_admin'
+  || (Array.isArray(user.permissions) ? user.permissions.includes(permission) : true);
+
+export const requirePermission = permission => (req, res, next) => hasPermission(req.user, permission)
+  ? next()
+  : res.status(403).json({ message: 'Your account does not have permission for this function.' });
+
+export const requireAnyPermission = permissions => (req, res, next) => permissions.some(permission => hasPermission(req.user, permission))
+  ? next()
+  : res.status(403).json({ message: 'Your account does not have permission for this function.' });
+
+export const reportsAccess = permission => (req, res, next) => {
+  const isHeadOfficeManager = req.user.role === 'manager' && req.user.location?.trim().toLowerCase() === 'head office';
+  const explicitlyAllowed = Array.isArray(req.user.permissions) && req.user.permissions.includes(permission);
+  const legacyHeadOfficeAccess = !Array.isArray(req.user.permissions) && isHeadOfficeManager;
+  return req.user.role === 'super_admin' || explicitlyAllowed || legacyHeadOfficeAccess
+    ? next()
+    : res.status(403).json({ message: 'Your account does not have permission for this report.' });
+};

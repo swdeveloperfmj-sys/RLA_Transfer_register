@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema({
   mobileVerified: { type: Boolean, default: false },
   role: { type: String, default: 'manager', lowercase: true, trim: true },
   location: { type: String, trim: true, default: '' },
+  permissions: { type: [String], default: undefined },
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 
