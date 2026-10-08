@@ -1,11 +1,13 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import fmjHoldingsLogo from "../assets/FMJ Holdings Logo_.jpg";
 import rlLogo from "../assets/rllogo.png";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const blankItem = { code: "", description: "", packaging: "Nos", quantity: 1 };
+const MAX_AOD_ITEMS = 7;
 
 export default function AodPage({ user, locations }) {
+  const itemInputRefs = useRef({});
   const [form, setForm] = useState({
     number: "",
     customerName: "",
@@ -47,6 +49,31 @@ export default function AodPage({ user, locations }) {
       ...current,
       items: current.items.filter((_, itemIndex) => itemIndex !== index),
     }));
+  const focusItemField = (index, field) => {
+    requestAnimationFrame(() => itemInputRefs.current[`${index}-${field}`]?.focus());
+  };
+  const handleItemEnter = (event, index, field) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (field === "code") {
+      focusItemField(index, "description");
+      return;
+    }
+    if (field === "description") {
+      focusItemField(index, "quantity");
+      return;
+    }
+    if (field === "quantity") {
+      if (index < form.items.length - 1) {
+        focusItemField(index + 1, "code");
+        return;
+      }
+      if (form.items.length >= MAX_AOD_ITEMS) return;
+      const nextIndex = form.items.length;
+      setForm((current) => ({ ...current, items: [...current.items, { ...blankItem }] }));
+      focusItemField(nextIndex, "code");
+    }
+  };
   const generate = async (event) => {
     event.preventDefault();
     setBusy(true);
@@ -88,10 +115,10 @@ export default function AodPage({ user, locations }) {
                 from: generated.from,
                 to: generated.to,
                 dispatchedBy: generated.dispatchedBy,
-                items: generated.items.map((item) => ({
+                items: generated.items.slice(0, MAX_AOD_ITEMS).map((item) => ({
                   code: item.code || "",
                   description: item.description || "",
-                  packaging: item.packaging || "",
+                  packaging: "Nos",
                   quantity: item.quantity,
                 })),
               });
@@ -183,12 +210,12 @@ export default function AodPage({ user, locations }) {
               </tr>
             </thead>
             <tbody>
-              {generated.items.map((item, index) => (
-                <tr key={index}>
-                  <td>{item.code || "—"}</td>
-                  <td>{item.description || "—"}</td>
-                  <td>{item.packaging || "—"}</td>
-                  <td>{item.quantity}</td>
+              {[...generated.items.slice(0, MAX_AOD_ITEMS), ...Array(Math.max(0, MAX_AOD_ITEMS - generated.items.length)).fill(null)].map((item, index) => (
+                <tr className={item ? "" : "aod-blank-item-row"} key={item?._id || `item-${index}`}>
+                  <td>{item?.code || "\u00A0"}</td>
+                  <td>{item?.description || "\u00A0"}</td>
+                  <td>{item?.packaging || "\u00A0"}</td>
+                  <td>{item?.quantity ?? "\u00A0"}</td>
                 </tr>
               ))}
             </tbody>
@@ -200,21 +227,13 @@ export default function AodPage({ user, locations }) {
           <footer>
             Location: 62 Galle Road, Henamulla, Panadura, 12550, Sri Lanka
           </footer>
-          <footer>
-            Location: 62 Galle Road, Henamulla, Panadura, 12550, Sri Lanka
-          </footer>
         </article>
       </section>
     );
 
   return (
     <section className="aod-template-page">
-      <div className="aod-template-heading">
-        <div><span className="eyebrow">ADVICE OF DESPATCH</span><h2>{editingId ? "Edit AOD" : "Raise AOD"}</h2><p>Enter the details directly into the AOD document template.</p></div>
-        <span className="aod-form-status">Draft</span>
-      </div>
       <form className="aod-template-form" onSubmit={generate}>
-        <div className="aod-template-toolbar"><span>Click each highlighted field and enter the document details.</span><button type="button" onClick={() => setField("items", [...form.items, { ...blankItem }])}>+ Add item row</button></div>
         <article className="aod-sheet aod-editable-sheet">
           <div className="aod-sheet-top">
             <section className="aod-company-block">
@@ -239,10 +258,10 @@ export default function AodPage({ user, locations }) {
           <table className="aod-goods aod-editable-goods">
             <thead><tr><th>CODE NO.</th><th>DESCRIPTION OF GOODS / SERVICES</th><th>PACKAGING</th><th>QUANTITY</th></tr></thead>
             <tbody>{form.items.map((item, index) => <tr key={index}>
-              <td><input aria-label="Code number" required value={item.code} placeholder="Code" onChange={(event) => setItem(index, "code", event.target.value)} /></td>
-              <td className="aod-item-description-cell"><input aria-label="Description" required value={item.description} placeholder="Description of goods / services" onChange={(event) => setItem(index, "description", event.target.value)} />{form.items.length > 1 && <button type="button" className="aod-template-remove" aria-label="Remove item" title="Remove item" onClick={() => removeItem(index)}>×</button>}</td>
-              <td><input aria-label="Packaging" required value={item.packaging} placeholder="Nos" onChange={(event) => setItem(index, "packaging", event.target.value)} /></td>
-              <td><input aria-label="Quantity" type="number" min="1" required value={item.quantity} onChange={(event) => setItem(index, "quantity", Number(event.target.value))} /></td>
+              <td><input ref={(element) => { itemInputRefs.current[`${index}-code`] = element; }} aria-label="Code number" required value={item.code} placeholder="Code" onKeyDown={(event) => handleItemEnter(event, index, "code")} onChange={(event) => setItem(index, "code", event.target.value)} /></td>
+              <td className="aod-item-description-cell"><input ref={(element) => { itemInputRefs.current[`${index}-description`] = element; }} aria-label="Description" required value={item.description} placeholder="Description of goods / services" onKeyDown={(event) => handleItemEnter(event, index, "description")} onChange={(event) => setItem(index, "description", event.target.value)} />{form.items.length > 1 && <button type="button" className="aod-template-remove" aria-label="Remove item" title="Remove item" onClick={() => removeItem(index)}>×</button>}</td>
+              <td><input className="aod-locked-field" aria-label="Packaging" readOnly value="Nos" title="Packaging is fixed as Nos" /></td>
+              <td><input ref={(element) => { itemInputRefs.current[`${index}-quantity`] = element; }} aria-label="Quantity" type="number" min="1" required value={item.quantity} onKeyDown={(event) => handleItemEnter(event, index, "quantity")} onChange={(event) => setItem(index, "quantity", Number(event.target.value))} /></td>
             </tr>)}</tbody>
           </table>
           <div className="aod-sign-row"><span>Approved by (Name & Signature)</span><span>Collected by (Name & Signature)</span></div>

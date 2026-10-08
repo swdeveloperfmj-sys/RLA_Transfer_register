@@ -52,6 +52,8 @@ router.post("/", requirePermission("aod"), async (req, res) => {
       .json({
         message: "Customer, From, To, and at least one item are required.",
       });
+  if (items.length > 7)
+    return res.status(400).json({ message: "An AOD can contain a maximum of 7 items." });
   const requestedNumber = req.body.number?.trim();
   if (requestedNumber && (await Aod.exists({ number: requestedNumber })))
     return res.status(409).json({ message: "This AOD number already exists." });
@@ -84,6 +86,8 @@ router.put("/:id", requirePermission("aod"), async (req, res) => {
       .json({
         message: "Customer, From, To, and at least one item are required.",
       });
+  if (items.length > 7)
+    return res.status(400).json({ message: "An AOD can contain a maximum of 7 items." });
   const aod = await Aod.findOne({ _id: req.params.id, raisedBy: req.user._id });
   if (!aod) return res.status(404).json({ message: "AOD not found." });
   const number = req.body.number?.trim() || aod.number;
