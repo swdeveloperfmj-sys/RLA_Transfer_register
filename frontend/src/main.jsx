@@ -185,15 +185,9 @@ function Login({ onLogin }) {
           <span className="eyebrow">OPERATIONS PORTAL</span>
           <h1>
             Royal Lanka Agencies (Pvt) Ltd.
+             <br />
 
-
-
-
-
-
-            
-            <br />
-            
+             
           </h1>
           <p>Secure, location-based access for your people and operations.</p>
         </div>
