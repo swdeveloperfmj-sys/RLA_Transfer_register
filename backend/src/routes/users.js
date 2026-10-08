@@ -10,6 +10,8 @@ import { sendNotificationEmail } from '../services/notifications.js';
 import { normalizeSriLankanNumber, sendTextwareSms } from '../services/sms.js';
 
 const router = Router();
+const allowedPermissions = new Set(['transfer', 'invoiceRequests', 'aodRequests', 'aodTransport', 'aodReturns', 'incoming', 'aod', 'myAods', 'heldReports', 'transactionReports', 'aodReports']);
+const cleanPermissions = permissions => Array.isArray(permissions) ? [...new Set(permissions.filter(permission => allowedPermissions.has(permission)))] : [];
 router.use(protect, superAdminOnly);
 router.get('/', async (_req, res) => res.json(await User.find().select('-password').sort({ createdAt: -1 })));
 const hashCode = code => createHash('sha256').update(code).digest('hex');
@@ -52,7 +54,7 @@ router.post('/verification/:channel/confirm', async (req, res) => {
   res.json({ message: `${channel === 'email' ? 'Email' : 'Mobile number'} verified.` });
 });
 router.post('/', async (req, res) => {
-  const { name, email, password, location = '', mobileNumber = '', role = 'manager' } = req.body;
+  const { name, email, password, location = '', mobileNumber = '', role = 'manager', permissions = [] } = req.body;
   const normalizedEmail = emailTarget(email); const normalizedMobile = mobileNumber ? normalizeSriLankanNumber(mobileNumber) : '';
   if (!name || !normalizedEmail || !password || password.length < 8 || !location) return res.status(400).json({ message: 'Name, email, one location, and an 8-character password are required.' });
   if (!await Location.exists({ name: location, isActive: true })) return res.status(400).json({ message: 'Select a valid active location.' });
@@ -60,7 +62,7 @@ router.post('/', async (req, res) => {
   if (!await VerificationCode.exists({ requestedBy: req.user._id, channel: 'email', target: normalizedEmail, verifiedAt: { $exists: true }, expiresAt: { $gt: new Date() } })) return res.status(400).json({ message: 'Verify the work email before creating this user.' });
   if (normalizedMobile && !await VerificationCode.exists({ requestedBy: req.user._id, channel: 'mobile', target: normalizedMobile, verifiedAt: { $exists: true }, expiresAt: { $gt: new Date() } })) return res.status(400).json({ message: 'Verify the mobile number before creating this user.' });
   try {
-    const user = await User.create({ name, email: normalizedEmail, password: await bcrypt.hash(password, 12), location, mobileNumber: normalizedMobile, role, emailVerified: true, mobileVerified: Boolean(normalizedMobile) });
+    const user = await User.create({ name, email: normalizedEmail, password: await bcrypt.hash(password, 12), location, mobileNumber: normalizedMobile, role, permissions: cleanPermissions(permissions), emailVerified: true, mobileVerified: Boolean(normalizedMobile) });
     const { password: _password, ...safeUser } = user.toObject();
     res.status(201).json(safeUser);
   } catch (error) { res.status(400).json({ message: error.code === 11000 ? 'That email is already in use.' : 'Could not create user.' }); }
@@ -71,14 +73,14 @@ router.patch('/:id/status', async (req, res) => {
   res.json(user);
 });
 router.patch('/:id', async (req, res) => {
-  const { name, email, mobileNumber = '', location, role, password } = req.body;
+  const { name, email, mobileNumber = '', location, role, password, permissions = [] } = req.body;
   const user = await User.findById(req.params.id).select('+password');
   if (!user) return res.status(404).json({ message: 'User not found.' });
   if (!name || !email || !role || !location) return res.status(400).json({ message: 'Name, email, role, and one assigned location are required.' });
   if (!await Location.exists({ name: location, isActive: true })) return res.status(400).json({ message: 'Select a valid active location.' });
   if (!await Role.exists({ key: role })) return res.status(400).json({ message: 'Select a valid role.' });
   if (password && password.length < 8) return res.status(400).json({ message: 'New password must have at least 8 characters.' });
-  const update = { name, email: email.toLowerCase(), mobileNumber, location, role };
+  const update = { name, email: email.toLowerCase(), mobileNumber, location, role, permissions: cleanPermissions(permissions) };
   if (password) update.password = await bcrypt.hash(password, 12);
   try { const updated = await User.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true }).select('-password'); res.json(updated); }
   catch (error) { res.status(400).json({ message: error.code === 11000 ? 'That email is already in use.' : 'Could not update user.' }); }

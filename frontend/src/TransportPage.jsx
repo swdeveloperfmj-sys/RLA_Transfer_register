@@ -9,6 +9,7 @@ import {
   FaPlus,
   FaTrashCan,
   FaTruckFast,
+  FaXmark,
 } from "react-icons/fa6";
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 async function api(path, options = {}) {
@@ -30,12 +31,14 @@ export default function TransportPage({ user, locations, incoming = false, invoi
     [items, setItems] = useState([{ itemCode: "", quantity: 1 }]),
     [error, setError] = useState(""),
     [creating, setCreating] = useState(false),
-    [workingTransferId, setWorkingTransferId] = useState("");
+    [workingTransferId, setWorkingTransferId] = useState(""),
+    [formOpen, setFormOpen] = useState(false);
   const [aodReference, setAodReference] = useState(null);
   const [holdRemarks, setHoldRemarks] = useState({});
   const [holdSelections, setHoldSelections] = useState({});
   const [requestMode, setRequestMode] = useState("manual");
   const [sheetRows, setSheetRows] = useState([]);
+  const [timeFilter, setTimeFilter] = useState("daily");
   const createInFlight = useRef(false);
   const downloadTemplate = () => {
     const sheet = XLSX.utils.aoa_to_sheet([
@@ -98,6 +101,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
     setItems(prefillAod.items?.map((item) => ({ itemCode: item.code || "", quantity: Number(item.quantity) || 1 })) || [{ itemCode: "", quantity: 1 }]);
     setAodReference(prefillAod);
     setRequestMode("manual");
+    setFormOpen(true);
     onPrefillUsed?.();
   }, [prefillAod]);
   const load = async () => {
@@ -133,6 +137,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       setSheetRows([]);
       setAodReference(null);
       await load();
+      setFormOpen(false);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -190,7 +195,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       setWorkingTransferId("");
     }
   };
-  const visible = incoming
+  const scopedTransfers = incoming
     ? transfers.filter(
         (t) =>
           t.destinationLocation === user.location &&
@@ -199,11 +204,15 @@ export default function TransportPage({ user, locations, incoming = false, invoi
     : invoiceRequests
       ? transfers.filter((t) => ["awaiting_head_office", "invoice_uploaded"].includes(t.status))
       : transfers.filter((t) => t.sourceLocation === user.location);
+  const visible = !incoming && !invoiceRequests && timeFilter === "daily"
+    ? scopedTransfers.filter((transfer) => new Date(transfer.createdAt).toDateString() === new Date().toDateString())
+    : scopedTransfers;
   const statusLabels = {
-    awaiting_head_office: "Waiting for invoice",
+    awaiting_head_office: "Waiting for TOG",
     invoice_uploaded: "TOG uploaded",
     awaiting_destination: "In transit",
     completed: "Completed",
+    closed: "Not Transferable",
   };
   const statusSteps = {
     awaiting_head_office: 1,
@@ -214,11 +223,13 @@ export default function TransportPage({ user, locations, incoming = false, invoi
   return (
     <section className="transport-page">
       {error && <div className="error">{error}</div>}
-      {!incoming && !invoiceRequests && (
-        <section className="panel transport-form">
+      {!incoming && !invoiceRequests && formOpen && (
+        <div className="transfer-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !creating) setFormOpen(false); }}>
+        <section className="panel transport-form transfer-modal" role="dialog" aria-modal="true" aria-labelledby="new-transfer-title">
+          <button type="button" className="transfer-modal-close" aria-label="Close new transfer form" title="Close" disabled={creating} onClick={() => setFormOpen(false)}><FaXmark /></button>
           <div className="panel-heading">
             <span className="eyebrow">NEW TRANSFER</span>
-            <h2>Create transport request</h2>
+            <h2 id="new-transfer-title">Create transfer request</h2>
             <p>Choose a destination and list every item in this shipment.</p>
           </div>
           <form onSubmit={create}>
@@ -310,10 +321,11 @@ export default function TransportPage({ user, locations, incoming = false, invoi
             </button>
             </>}
             <button type="submit" className="send-transfer" disabled={creating}>
-              <FaTruckFast /> {creating ? "Sending request…" : "Send transport request"}
+              <FaTruckFast /> {creating ? "Sending request…" : "Send transfer request"}
             </button>
           </form>
         </section>
+        </div>
       )}
       <section className="transfer-workspace">
         <div className="transfer-heading">
@@ -321,10 +333,10 @@ export default function TransportPage({ user, locations, incoming = false, invoi
             <span className="eyebrow">OPERATIONS</span>
             <h2>
               {incoming
-                ? "Incoming transports"
+                ? "Incoming transfers"
                 : invoiceRequests
                   ? "TOG requests"
-                  : "Transport tracker"}
+                  : "Transfer tracker"}
             </h2>
             <p>
               {invoiceRequests
@@ -332,10 +344,14 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                 : "Track each request from approval to delivery."}
             </p>
           </div>
-          <div className="transfer-count">
-            <FaTruckFast />
-            <strong>{visible.length}</strong>
-            <span>Requests</span>
+          <div className="transfer-heading-actions">
+            {!incoming && !invoiceRequests && <label className="transfer-date-filter"><span>Show</span><select value={timeFilter} onChange={(event) => setTimeFilter(event.target.value)}><option value="daily">Daily</option><option value="all">All transfers</option></select></label>}
+            {!incoming && !invoiceRequests && <button type="button" className="new-transfer-button" onClick={() => { setError(""); setFormOpen(true); }}><FaPlus /> New Transfer</button>}
+            <div className="transfer-count">
+              <FaTruckFast />
+              <strong>{visible.length}</strong>
+              <span>Requests</span>
+            </div>
           </div>
         </div>
         <div className="transfer-list">
@@ -466,8 +482,8 @@ export default function TransportPage({ user, locations, incoming = false, invoi
           {!visible.length && (
             <div className="transfer-empty">
               <FaTruckFast />
-              <h3>No transport records</h3>
-              <p>New requests will appear here.</p>
+              <h3>{!incoming && !invoiceRequests && timeFilter === "daily" ? "No transfers today" : "No transfer records"}</h3>
+              <p>{!incoming && !invoiceRequests && timeFilter === "daily" ? "Select All transfers to view previous records." : "New requests will appear here."}</p>
             </div>
           )}
         </div>

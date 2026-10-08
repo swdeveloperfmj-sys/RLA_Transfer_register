@@ -11,7 +11,7 @@ Responsive role-based login and dashboard. Super admins can create normal users 
 
 ## Workflow notifications
 
-Every transport status change creates a dashboard alert for each active user at the affected location and sends the same alert by email. Add the SMTP values from `backend/.env.example` to `backend/.env` to enable email delivery. Dashboard alerts use `react-hot-toast` and check for updates every 20 seconds while the user is signed in.
+Every transfer status change creates a dashboard alert for each active user at the affected location and sends the same alert by email. Add the SMTP values from `backend/.env.example` to `backend/.env` to enable email delivery. Dashboard alerts use `react-hot-toast` and check for updates every 20 seconds while the user is signed in.
 
 To enable Textware SMS notifications as well, add the `TEXTWARE_SMS_*` values from the same example file and set `TEXTWARE_SMS_ENABLED=true`. Each user must have a mobile number; Sri Lankan `07xxxxxxxx` numbers are automatically sent to Textware as `947xxxxxxxx`.
 

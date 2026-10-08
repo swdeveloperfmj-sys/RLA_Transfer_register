@@ -9,7 +9,7 @@ const monthRange = (value) => {
   const lastDay = new Date(year, monthNumber, 0).getDate();
   return { from: `${value}-01`, to: `${value}-${String(lastDay).padStart(2, "0")}` };
 };
-const statusLabel = (status) => status === "invoice_uploaded" ? "TOG uploaded" : status.replaceAll("_", " ");
+const statusLabel = (status) => status === "invoice_uploaded" ? "TOG uploaded" : status === "closed" ? "Not Transferable" : status.replaceAll("_", " ");
 const itemList = (items, includeRemark = false) => items.length
   ? items.map((item) => <span key={`${item.itemCode}-${item.quantity}`} className={includeRemark ? "held-item" : "report-item"}>{item.itemCode} × {item.quantity}{includeRemark && item.remark ? ` — ${item.remark}` : ""}</span>)
   : <span className="no-items">—</span>;
@@ -43,7 +43,7 @@ const downloadPdf = (rows, { label, location }) => {
 };
 
 export default function TransactionReportPage({ locations = [] }) {
-  const [mode, setMode] = useState("daily"), [date, setDate] = useState(today), [selectedMonth, setSelectedMonth] = useState(month), [fromDate, setFromDate] = useState(today), [toDate, setToDate] = useState(today), [location, setLocation] = useState(""), [rows, setRows] = useState([]), [error, setError] = useState(""), [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("daily"), [date, setDate] = useState(today), [selectedMonth, setSelectedMonth] = useState(month), [fromDate, setFromDate] = useState(today), [toDate, setToDate] = useState(today), [location, setLocation] = useState(""), [rows, setRows] = useState([]), [error, setError] = useState(""), [loading, setLoading] = useState(false), [expandedId, setExpandedId] = useState("");
   const range = () => mode === "daily" ? { from: date, to: date } : mode === "monthly" ? monthRange(selectedMonth) : { from: fromDate, to: toDate };
   const load = async () => {
     setLoading(true); setError("");
@@ -58,9 +58,26 @@ export default function TransactionReportPage({ locations = [] }) {
   };
   useEffect(() => { load(); }, [mode, date, selectedMonth, fromDate, toDate, location]);
   return <section className="transaction-report">
-    <div className="panel-heading"><span className="eyebrow">SUPER ADMIN REPORT</span><h2>Transaction report</h2><p>Review each transport request, its sent items, held items, and current status.</p></div>
+    <div className="panel-heading"><span className="eyebrow">OPERATIONS REPORT</span><h2>Transaction report</h2><p>Review each transfer request, its sent items, held items, and current status.</p></div>
     <div className="report-controls"><select value={mode} onChange={(event) => setMode(event.target.value)}><option value="daily">Daily</option><option value="monthly">Monthly</option><option value="range">Date range</option></select><select value={location} onChange={(event) => setLocation(event.target.value)}><option value="">All sent locations</option>{locations.map((item) => <option key={item._id} value={item.name}>{item.name}{item.code ? ` (${item.code})` : ""}</option>)}</select>{mode === "daily" ? <input type="date" value={date} onChange={(event) => setDate(event.target.value)} /> : mode === "monthly" ? <input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} /> : <><input type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} /><span>to</span><input type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} /></>}<button onClick={load}><FaFilter /> {loading ? "Loading..." : "Apply filter"}</button><button className="pdf-download" disabled={!rows.length} onClick={() => downloadPdf(rows, { label: `${range().from}-to-${range().to}`, location })}><FaDownload /> Download PDF</button></div>
     {error && <div className="error">{error}</div>}
-    <div className="transaction-table-wrap"><table className="transaction-table"><thead><tr><th>Transaction no.</th><th>Sent location</th><th>Received location</th><th>Sent items</th><th>Held items</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><strong>{row.referenceNumber}</strong><small>{new Date(row.createdAt).toLocaleDateString()}</small></td><td>{row.sourceLocation}</td><td>{row.destinationLocation}</td><td>{itemList(row.sentItems)}</td><td>{itemList(row.heldItems, true)}</td><td><span className={`transaction-status status-${row.status}`}>{statusLabel(row.status)}</span></td></tr>)}</tbody></table>{!loading && !rows.length && <p className="transfer-empty">No transactions found for this filter.</p>}</div>
+    <div className="report-summary-wrap">
+      <div className="report-table-scroll">
+      <table className="report-summary-table">
+        <thead><tr><th>Transaction no.</th><th>Route</th><th>Items</th><th>Held</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>{rows.map((row) => <React.Fragment key={row.id}>
+          <tr className="report-summary-row" onDoubleClick={() => setExpandedId(expandedId === row.id ? "" : row.id)} title="Double-click to view full details">
+            <td><strong>{row.referenceNumber}</strong></td><td>{row.sourceLocation} → {row.destinationLocation}</td><td>{row.sentItems.length}</td><td>{row.heldItems.length}</td><td><span className={`transaction-status status-${row.status}`}>{statusLabel(row.status)}</span></td><td>{new Date(row.createdAt).toLocaleDateString()}</td>
+          </tr>
+          {expandedId === row.id && <tr className="report-detail-row"><td colSpan="6"><div className="report-detail report-detail-wide">
+            <div><b>Sent items</b>{itemList(row.sentItems)}</div><div><b>Held items</b>{itemList(row.heldItems, true)}</div><div><b>Created</b><span>{new Date(row.createdAt).toLocaleString()}</span></div>
+          </div></td></tr>}
+        </React.Fragment>)}</tbody>
+      </table>
+      </div>
+      {!loading && !rows.length && <p className="transfer-empty">No transactions found for this filter.</p>}
+      <p className="report-expand-hint">Double-click a row to show or hide its full details.</p>
+      <details className="status-help"><summary aria-label="Transaction status help" title="Status help">?</summary><div className="status-help-card"><strong>Transaction status guide</strong><dl><div><dt>Awaiting head office</dt><dd>Waiting for Head Office review.</dd></div><div><dt>TOG uploaded</dt><dd>The TOG document has been attached.</dd></div><div><dt>Awaiting destination</dt><dd>Dispatched and waiting for destination receipt.</dd></div><div><dt>Completed</dt><dd>Received by the destination.</dd></div><div><dt>Not Transferable</dt><dd>The transfer cannot proceed.</dd></div></dl></div></details>
+    </div>
   </section>;
 }

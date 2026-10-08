@@ -20,7 +20,7 @@ import {
   FaBell,
   FaFileInvoice,
 } from "react-icons/fa6";
-import "./styles.css?v=20260929-notifications";
+import "./styles.css?v=20261008-aod-dark-text";
 import TransportPage from "./TransportPage.jsx";
 import HoldReportPage from "./HoldReportPage.jsx";
 import TransactionReportPage from "./TransactionReportPage.jsx";
@@ -38,6 +38,41 @@ const Plus = FaPlus;
 const ShieldCheck = FaShieldHalved;
 const Users = FaUsers;
 const X = FaXmark;
+
+const USER_PERMISSION_GROUPS = [
+  { title: "Transfer functions", options: [
+    { key: "transfer", label: "Transfer" },
+    { key: "invoiceRequests", label: "TOG Requests" },
+    { key: "incoming", label: "Incoming Transfers" },
+  ] },
+  { title: "AOD functions", options: [
+    { key: "aod", label: "Raise AOD" },
+    { key: "myAods", label: "My Raised AODs" },
+    { key: "aodRequests", label: "AOD Destination Requests" },
+    { key: "aodTransport", label: "AOD Transfer Requests" },
+    { key: "aodReturns", label: "AOD Returns" },
+  ] },
+  { title: "Reports", options: [
+    { key: "heldReports", label: "Held Item Reports" },
+    { key: "transactionReports", label: "Transaction Reports" },
+    { key: "aodReports", label: "AOD Reports" },
+  ] },
+];
+const ALL_USER_PERMISSIONS = USER_PERMISSION_GROUPS.flatMap((group) => group.options.map((option) => option.key));
+const DEFAULT_USER_PERMISSIONS = ALL_USER_PERMISSIONS.filter((permission) => !permission.endsWith("Reports"));
+const legacyPermissionsFor = (user) => user.role === "super_admin"
+  ? ALL_USER_PERMISSIONS
+  : [...DEFAULT_USER_PERMISSIONS, ...(user.role === "manager" && user.location?.trim().toLowerCase() === "head office" ? ["heldReports", "transactionReports", "aodReports"] : [])];
+
+function PermissionSelector({ permissions, onChange, disabled = false }) {
+  const toggle = (key) => onChange(permissions.includes(key) ? permissions.filter((permission) => permission !== key) : [...permissions, key]);
+  return <fieldset className="permission-selector" disabled={disabled}>
+    <legend>Allowed dashboard functions</legend>
+    <p>Dashboard is always available. Select the additional functions this user can access.</p>
+    <div className="permission-selector-actions"><button type="button" onClick={() => onChange([...ALL_USER_PERMISSIONS])}>Select all</button><button type="button" onClick={() => onChange([])}>Clear all</button></div>
+    {USER_PERMISSION_GROUPS.map((group) => <section key={group.title}><strong>{group.title}</strong><div>{group.options.map((option) => <label className="permission-option" key={option.key}><input type="checkbox" checked={permissions.includes(option.key)} onChange={() => toggle(option.key)} /><span>{option.label}</span></label>)}</div></section>)}
+  </fieldset>;
+}
 
 function PasswordInput({ value, onChange, ...props }) {
   const [visible, setVisible] = useState(false);
@@ -209,6 +244,7 @@ function AddUser({ locations, roles, onClose, onCreated }) {
     confirmPassword: "",
     location: "",
     role: "manager",
+    permissions: [...DEFAULT_USER_PERMISSIONS],
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -335,6 +371,7 @@ function AddUser({ locations, roles, onClose, onCreated }) {
               ))}
             </select>
           </label>
+          {form.role !== "super_admin" && <PermissionSelector permissions={form.permissions} onChange={(permissions) => setForm({ ...form, permissions })} />}
           {error && <div className="error">{error}</div>}
           <button disabled={busy}>{busy ? "Creating…" : "Create user"}</button>
         </form>
@@ -351,6 +388,7 @@ function EditUser({ user, locations, roles, onClose, onUpdated }) {
     role: user.role,
     location: user.location || "",
     password: "",
+    permissions: Array.isArray(user.permissions) ? user.permissions : legacyPermissionsFor(user),
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -442,12 +480,108 @@ function EditUser({ user, locations, roles, onClose, onUpdated }) {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
           </label>
+          {form.role !== "super_admin" && <PermissionSelector permissions={form.permissions} onChange={(permissions) => setForm({ ...form, permissions })} />}
           {error && <div className="error">{error}</div>}
           <button disabled={busy}>{busy ? "Saving…" : "Save changes"}</button>
         </form>
       </div>
     </div>
   );
+}
+
+function ManagerTransferSummary({ user, transfers, locations, onNavigate, canAccess }) {
+  const [selectedLocationFlow, setSelectedLocationFlow] = useState(null);
+  const outgoing = transfers.filter((transfer) => transfer.sourceLocation === user.location);
+  const incoming = transfers.filter((transfer) => transfer.destinationLocation === user.location);
+  const activeStatuses = new Set(["awaiting_head_office", "invoice_uploaded", "awaiting_destination"]);
+  const inProgress = transfers.filter((transfer) => activeStatuses.has(transfer.status)).length;
+  const completed = transfers.filter((transfer) => transfer.status === "completed").length;
+  const countStatus = (records, status) => records.filter((transfer) => transfer.status === status).length;
+  const statusLabels = {
+    awaiting_head_office: "Waiting for TOG",
+    invoice_uploaded: "TOG uploaded",
+    awaiting_destination: "In transit",
+    completed: "Completed",
+    closed: "Not Transferable",
+  };
+  const recent = [...transfers].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6);
+  const isHeadOfficeManager = user.role === "manager" && user.location?.trim().toLowerCase() === "head office";
+  const locationSummaries = locations.map((location) => {
+    const locationOutgoing = transfers.filter((transfer) => transfer.sourceLocation === location.name);
+    const locationIncoming = transfers.filter((transfer) => transfer.destinationLocation === location.name);
+    const managerNames = [...new Set(locationOutgoing.map((transfer) => transfer.requestedBy?.name).filter(Boolean))];
+    return { location, outgoing: locationOutgoing, incoming: locationIncoming, managerNames };
+  });
+  const selectedLocationTransfers = selectedLocationFlow
+    ? transfers.filter((transfer) => selectedLocationFlow.direction === "outgoing" ? transfer.sourceLocation === selectedLocationFlow.location : transfer.destinationLocation === selectedLocationFlow.location)
+    : [];
+  const openPage = (preferred, fallback) => {
+    const target = canAccess(preferred) ? preferred : canAccess(fallback) ? fallback : "";
+    if (target) onNavigate(target);
+  };
+  return <section className="manager-transfer-dashboard">
+    <div className="manager-overview-cards">
+      <button type="button" className="manager-summary-card outgoing" disabled={!canAccess("transfer")} onClick={() => openPage("transfer", "incoming")}><small>Outgoing transfers</small><strong>{outgoing.length}</strong><span>Sent from {user.location}</span><em>View transfers →</em></button>
+      <button type="button" className="manager-summary-card incoming" disabled={!canAccess("incoming")} onClick={() => openPage("incoming", "transfer")}><small>Incoming transfers</small><strong>{incoming.length}</strong><span>Sent to {user.location}</span><em>View incoming →</em></button>
+      <button type="button" className="manager-summary-card progress" disabled={!canAccess("transfer") && !canAccess("incoming")} onClick={() => openPage("transfer", "incoming")}><small>In progress</small><strong>{inProgress}</strong><span>Waiting or in transit</span><em>View activity →</em></button>
+      <button type="button" className="manager-summary-card completed" disabled={!canAccess("incoming") && !canAccess("transfer")} onClick={() => openPage("incoming", "transfer")}><small>Completed</small><strong>{completed}</strong><span>Successfully received</span><em>View completed →</em></button>
+    </div>
+    {isHeadOfficeManager && <section className="panel head-office-location-summary">
+      <div className="location-summary-heading"><div><span>HEAD OFFICE OVERVIEW</span><h2>All location transfer summary</h2><p>Click a transfer count to expand its details below the selected location.</p></div><strong>{locationSummaries.length}<small>Locations</small></strong></div>
+      <div className="location-flow-list">
+        {locationSummaries.map(({ location, outgoing: locationOutgoing, incoming: locationIncoming, managerNames }) => {
+          const selectedDirection = selectedLocationFlow?.location === location.name ? selectedLocationFlow.direction : null;
+          const toggleFlow = (direction) => setSelectedLocationFlow((current) => current?.location === location.name && current.direction === direction ? null : { location: location.name, direction });
+          return <article className={`location-flow-card${selectedDirection ? " is-expanded" : ""}`} key={location._id || location.name}>
+            <div className="location-flow-card-summary">
+              <div className="location-flow-identity"><span>{location.name.slice(0, 1).toUpperCase()}</span><div><strong>{location.name}</strong><small>{managerNames.length ? managerNames.join(", ") : "Location team"}</small></div></div>
+              <div className="location-flow-actions">
+                <button type="button" className={`location-flow-count outgoing${selectedDirection === "outgoing" ? " is-active" : ""}`} disabled={!locationOutgoing.length} aria-expanded={selectedDirection === "outgoing"} onClick={() => toggleFlow("outgoing")}><span><small>Outgoing</small><b>{locationOutgoing.length}</b></span><em>{selectedDirection === "outgoing" ? "Hide details" : "View sent"}</em></button>
+                <button type="button" className={`location-flow-count incoming${selectedDirection === "incoming" ? " is-active" : ""}`} disabled={!locationIncoming.length} aria-expanded={selectedDirection === "incoming"} onClick={() => toggleFlow("incoming")}><span><small>Incoming</small><b>{locationIncoming.length}</b></span><em>{selectedDirection === "incoming" ? "Hide details" : "View received"}</em></button>
+              </div>
+            </div>
+            {selectedDirection && <section className={`location-flow-details ${selectedDirection}`}>
+              <div className="location-flow-details-heading"><div><span>{selectedDirection}</span><h3>{selectedDirection === "outgoing" ? "Sent from" : "Received by"} {location.name}</h3><p>{selectedLocationTransfers.length} transfer record{selectedLocationTransfers.length === 1 ? "" : "s"}</p></div><button type="button" onClick={() => setSelectedLocationFlow(null)}><FaXmark /> Close</button></div>
+              <div className="location-flow-detail-list">{selectedLocationTransfers.map((transfer) => <article key={transfer._id}><div><strong>{transfer.referenceNumber}</strong><span>{transfer.sourceLocation} → {transfer.destinationLocation}</span></div><div><b>{transfer.items?.length || 0} item(s)</b><span>{statusLabels[transfer.status] || transfer.status?.replaceAll("_", " ")}</span></div><time>{new Date(transfer.createdAt).toLocaleString()}</time></article>)}</div>
+            </section>}
+          </article>;
+        })}
+      </div>
+    </section>}
+    <div className="manager-flow-grid">
+      <section className="panel manager-flow-panel">
+        <div className="manager-flow-heading"><div><span className="manager-direction outgoing">OUT</span><h2>Outgoing summary</h2></div><strong>{outgoing.length}</strong></div>
+        <div className="manager-status-list">
+          <div><span>Waiting for TOG</span><b>{countStatus(outgoing, "awaiting_head_office")}</b></div>
+          <div><span>TOG uploaded</span><b>{countStatus(outgoing, "invoice_uploaded")}</b></div>
+          <div><span>In transit</span><b>{countStatus(outgoing, "awaiting_destination")}</b></div>
+          <div><span>Completed</span><b>{countStatus(outgoing, "completed")}</b></div>
+          <div><span>Not Transferable</span><b>{countStatus(outgoing, "closed")}</b></div>
+        </div>
+      </section>
+      <section className="panel manager-flow-panel">
+        <div className="manager-flow-heading"><div><span className="manager-direction incoming">IN</span><h2>Incoming summary</h2></div><strong>{incoming.length}</strong></div>
+        <div className="manager-status-list">
+          <div><span>In transit</span><b>{countStatus(incoming, "awaiting_destination")}</b></div>
+          <div><span>Completed</span><b>{countStatus(incoming, "completed")}</b></div>
+          <div><span>Waiting for TOG</span><b>{countStatus(incoming, "awaiting_head_office")}</b></div>
+          <div><span>TOG uploaded</span><b>{countStatus(incoming, "invoice_uploaded")}</b></div>
+          <div><span>Not Transferable</span><b>{countStatus(incoming, "closed")}</b></div>
+        </div>
+      </section>
+    </div>
+    <section className="panel manager-activity-panel">
+      <div className="panel-heading"><h2>Recent transfer activity</h2><p>Latest incoming and outgoing transfers for {user.location}.</p></div>
+      <div className="manager-activity-list">
+        {recent.map((transfer) => {
+          const direction = transfer.sourceLocation === user.location ? "Outgoing" : "Incoming";
+          const target = direction === "Outgoing" ? "transfer" : "incoming";
+          return <article className={canAccess(target) ? "is-clickable" : ""} key={transfer._id} onClick={() => canAccess(target) && onNavigate(target)}><span className={`manager-activity-direction ${direction.toLowerCase()}`}>{direction}</span><div><strong>{transfer.referenceNumber}</strong><span>{transfer.sourceLocation} → {transfer.destinationLocation}</span></div><div className="manager-activity-meta"><b>{statusLabels[transfer.status] || transfer.status?.replaceAll("_", " ")}</b><small>{new Date(transfer.createdAt).toLocaleString()}</small></div></article>;
+        })}
+        {!recent.length && <p className="manager-activity-empty">No transfer activity is available yet.</p>}
+      </div>
+    </section>
+  </section>;
 }
 
 function Dashboard({ user, onLogout }) {
@@ -473,6 +607,7 @@ function Dashboard({ user, onLogout }) {
   const [transportAod, setTransportAod] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
   const [editingLocation, setEditingLocation] = useState(null);
+  const [dashboardTransfers, setDashboardTransfers] = useState([]);
   const shownNotificationIds = useRef(new Set());
   useEffect(() => {
     request("/locations").then(setLocations);
@@ -485,6 +620,21 @@ function Dashboard({ user, onLogout }) {
         .catch((e) => setError(e.message));
     }
   }, [user.role]);
+  useEffect(() => {
+    if (user.role === "super_admin") return undefined;
+    let mounted = true;
+    const loadDashboardTransfers = async () => {
+      try {
+        const latest = await request("/transfers");
+        if (mounted) setDashboardTransfers(latest);
+      } catch (loadError) {
+        if (mounted) setError(loadError.message);
+      }
+    };
+    loadDashboardTransfers();
+    const interval = window.setInterval(loadDashboardTransfers, 5000);
+    return () => { mounted = false; window.clearInterval(interval); };
+  }, [user.role, user.location]);
   useEffect(() => {
     let mounted = true;
     let initialLoad = true;
@@ -634,7 +784,7 @@ function Dashboard({ user, onLogout }) {
     locations: "Locations",
     users: "Users",
     roles: "Roles",
-    transport: "Transport",
+    transport: "Transfer",
     invoiceRequests: "TOG Requests",
     heldReports: "Held Item Reports",
     transactionReports: "Transaction Report",
@@ -642,9 +792,9 @@ function Dashboard({ user, onLogout }) {
     myAods: "My Raised AODs",
     aodRequests: "AOD Ready Requests",
     aodReturns: "AOD Returns",
-    aodTransport: "AOD Transport Requests",
+    aodTransport: "AOD Transfer Requests",
     aodReports: "AOD Reports",
-    incoming: "Incoming transport",
+    incoming: "Incoming transfer",
   };
   const markTabNotificationsRead = (target) => {
     const isHeadOfficeUser = user.location?.trim().toLowerCase() === "head office";
@@ -690,6 +840,9 @@ function Dashboard({ user, onLogout }) {
   };
   const unreadCount = notifications.filter((notification) => !notification.read).length;
   const isHeadOffice = user.location?.trim().toLowerCase() === "head office";
+  const legacyPermissions = legacyPermissionsFor(user);
+  const hasPagePermission = (permission) => user.role === "super_admin" || (Array.isArray(user.permissions) ? user.permissions.includes(permission) : legacyPermissions.includes(permission));
+  const canViewReports = ["heldReports", "transactionReports", "aodReports"].some(hasPagePermission);
   const updateDot = (target) => {
     const notification = notifications.find((entry) => {
       if (entry.read || (!entry.transfer && !entry.aod)) return false;
@@ -731,14 +884,14 @@ function Dashboard({ user, onLogout }) {
             <ShieldCheck />
             <span>Dashboard</span>
           </a>
-          <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transport</span>{updateDot("transport") && <i className={`nav-update-dot ${updateDot("transport")}`} />}</a>
-          {isHeadOffice && <a href="#invoice-requests" className={page === "invoiceRequests" ? "active" : ""} onClick={(event) => navigate("invoiceRequests", event)}><FaFileInvoice /><span>TOG Requests</span>{updateDot("invoiceRequests") && <i className={`nav-update-dot ${updateDot("invoiceRequests")}`} />}</a>}
-          {!isHeadOffice && <a href="#aod-requests" className={page === "aodRequests" ? "active" : ""} onClick={(event) => navigate("aodRequests", event)}><FaFileInvoice /><span>AOD Destination Requests</span>{updateDot("aodRequests") && <i className={`nav-update-dot ${updateDot("aodRequests")}`} />}</a>}
-          {!isHeadOffice && <a href="#aod-transport" className={page === "aodTransport" ? "active" : ""} onClick={(event) => navigate("aodTransport", event)}><FaFileInvoice /><span>AOD Transport Requests</span>{updateDot("aodTransport") && <i className={`nav-update-dot ${updateDot("aodTransport")}`} />}</a>}
-          <a href="#aod-returns" className={page === "aodReturns" ? "active" : ""} onClick={(event) => navigate("aodReturns", event)}><FaFileInvoice /><span>AOD Returns</span>{updateDot("aodReturns") && <i className={`nav-update-dot ${updateDot("aodReturns")}`} />}</a>
-          <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span>{updateDot("incoming") && <i className={`nav-update-dot ${updateDot("incoming")}`} />}</a>
-          <a href="#aod" className={page === "aod" ? "active" : ""} onClick={(event) => navigate("aod", event)}><FaFileInvoice /><span>Raise AOD</span></a>
-          <a href="#my-aods" className={page === "myAods" ? "active" : ""} onClick={(event) => navigate("myAods", event)}><FaFileInvoice /><span>My Raised AODs</span></a>
+          {hasPagePermission("transfer") && <a href="#transport" className={page === "transport" ? "active" : ""} onClick={(event) => navigate("transport", event)}><MapPin /><span>Transfer</span>{updateDot("transport") && <i className={`nav-update-dot ${updateDot("transport")}`} />}</a>}
+          {isHeadOffice && hasPagePermission("invoiceRequests") && <a href="#invoice-requests" className={page === "invoiceRequests" ? "active" : ""} onClick={(event) => navigate("invoiceRequests", event)}><FaFileInvoice /><span>TOG Requests</span>{updateDot("invoiceRequests") && <i className={`nav-update-dot ${updateDot("invoiceRequests")}`} />}</a>}
+          {!isHeadOffice && hasPagePermission("aodRequests") && <a href="#aod-requests" className={page === "aodRequests" ? "active" : ""} onClick={(event) => navigate("aodRequests", event)}><FaFileInvoice /><span>AOD Destination Requests</span>{updateDot("aodRequests") && <i className={`nav-update-dot ${updateDot("aodRequests")}`} />}</a>}
+          {!isHeadOffice && hasPagePermission("aodTransport") && <a href="#aod-transport" className={page === "aodTransport" ? "active" : ""} onClick={(event) => navigate("aodTransport", event)}><FaFileInvoice /><span>AOD Transfer Requests</span>{updateDot("aodTransport") && <i className={`nav-update-dot ${updateDot("aodTransport")}`} />}</a>}
+          {hasPagePermission("aodReturns") && <a href="#aod-returns" className={page === "aodReturns" ? "active" : ""} onClick={(event) => navigate("aodReturns", event)}><FaFileInvoice /><span>AOD Returns</span>{updateDot("aodReturns") && <i className={`nav-update-dot ${updateDot("aodReturns")}`} />}</a>}
+          {hasPagePermission("incoming") && <a href="#incoming" className={page === "incoming" ? "active" : ""} onClick={(event) => navigate("incoming", event)}><Users /><span>Incoming</span>{updateDot("incoming") && <i className={`nav-update-dot ${updateDot("incoming")}`} />}</a>}
+          {hasPagePermission("aod") && <a href="#aod" className={page === "aod" ? "active" : ""} onClick={(event) => navigate("aod", event)}><FaFileInvoice /><span>Raise AOD</span></a>}
+          {hasPagePermission("myAods") && <a href="#my-aods" className={page === "myAods" ? "active" : ""} onClick={(event) => navigate("myAods", event)}><FaFileInvoice /><span>My Raised AODs</span></a>}
           {user.role === "super_admin" && (
             <>
               <span className="nav-caption">MANAGEMENT</span>
@@ -763,15 +916,20 @@ function Dashboard({ user, onLogout }) {
                 <ShieldCheck />
                 <span>Roles</span>
               </a>
-              <a className={page === "heldReports" ? "active" : ""} onClick={() => navigate("heldReports")}>
+            </>
+          )}
+          {canViewReports && (
+            <>
+              <span className="nav-caption">REPORTS</span>
+              {hasPagePermission("heldReports") && <a className={page === "heldReports" ? "active" : ""} onClick={() => navigate("heldReports")}>
                 <FaFileInvoice />
                 <span>Held Item Reports</span>
-              </a>
-              <a className={page === "transactionReports" ? "active" : ""} onClick={() => navigate("transactionReports")}>
+              </a>}
+              {hasPagePermission("transactionReports") && <a className={page === "transactionReports" ? "active" : ""} onClick={() => navigate("transactionReports")}>
                 <FaFileInvoice />
                 <span>Transaction Report</span>
-              </a>
-              <a className={page === "aodReports" ? "active" : ""} onClick={() => navigate("aodReports")}><FaFileInvoice /><span>AOD Reports</span></a>
+              </a>}
+              {hasPagePermission("aodReports") && <a className={page === "aodReports" ? "active" : ""} onClick={() => navigate("aodReports")}><FaFileInvoice /><span>AOD Reports</span></a>}
             </>
           )}
         </nav>
@@ -837,18 +995,18 @@ function Dashboard({ user, onLogout }) {
           )}
         </header>
         {error && <div className="error">{error}</div>}
-        {page === "transport" && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} prefillAod={transportAod} onPrefillUsed={() => setTransportAod(null)} />}
-        {page === "invoiceRequests" && <TransportPage user={user} locations={locations} invoiceRequests highlightTransferId={selectedTransferId} />}
-        {page === "incoming" && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} />}
-        {page === "aod" && <AodPage user={user} locations={locations} />}
-        {page === "myAods" && <AodWorkPage user={user} locations={locations} mode="mine" />}
-        {page === "aodRequests" && <AodWorkPage user={user} locations={locations} mode="destination" />}
-        {page === "aodReturns" && <AodWorkPage user={user} locations={locations} mode="returns" />}
-        {page === "aodTransport" && <AodWorkPage user={user} locations={locations} mode="transport" onProceed={(aod) => { setTransportAod(aod); setPage("transport"); }} />}
-        {user.role === "super_admin" && page === "aodReports" && <AodWorkPage reports user={user} locations={locations} />}
-        {user.role === "super_admin" && page === "heldReports" && <HoldReportPage locations={locations} />}
-        {user.role === "super_admin" && page === "transactionReports" && <TransactionReportPage locations={locations} />}
-        {page === "dashboard" && (
+        {page === "transport" && (hasPagePermission("transfer") || hasPagePermission("aodTransport")) && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} prefillAod={transportAod} onPrefillUsed={() => setTransportAod(null)} />}
+        {page === "invoiceRequests" && hasPagePermission("invoiceRequests") && <TransportPage user={user} locations={locations} invoiceRequests highlightTransferId={selectedTransferId} />}
+        {page === "incoming" && hasPagePermission("incoming") && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} />}
+        {page === "aod" && hasPagePermission("aod") && <AodPage user={user} locations={locations} />}
+        {page === "myAods" && hasPagePermission("myAods") && <AodWorkPage user={user} locations={locations} mode="mine" />}
+        {page === "aodRequests" && hasPagePermission("aodRequests") && <AodWorkPage user={user} locations={locations} mode="destination" />}
+        {page === "aodReturns" && hasPagePermission("aodReturns") && <AodWorkPage user={user} locations={locations} mode="returns" />}
+        {page === "aodTransport" && hasPagePermission("aodTransport") && <AodWorkPage user={user} locations={locations} mode="transport" onProceed={(aod) => { setTransportAod(aod); setPage("transport"); }} />}
+        {page === "aodReports" && hasPagePermission("aodReports") && <AodWorkPage reports user={user} locations={locations} />}
+        {page === "heldReports" && hasPagePermission("heldReports") && <HoldReportPage locations={locations} />}
+        {page === "transactionReports" && hasPagePermission("transactionReports") && <TransactionReportPage locations={locations} />}
+        {page === "dashboard" && user.role === "super_admin" && (
           <div className="stats">
             <article>
               <span className="icon blue">
@@ -893,6 +1051,7 @@ function Dashboard({ user, onLogout }) {
             </article>
           </div>
         )}
+        {page === "dashboard" && user.role !== "super_admin" && <ManagerTransferSummary user={user} transfers={dashboardTransfers} locations={locations} onNavigate={navigate} canAccess={hasPagePermission} />}
         {user.role === "super_admin" && page === "locations" && (
           <section className="panel locations-panel">
             <div className="panel-heading">

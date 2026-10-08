@@ -6,7 +6,7 @@ import Aod from '../models/Aod.js';
 import Notification from '../models/Notification.js';
 import Location from '../models/Location.js';
 import LocationSequence from '../models/LocationSequence.js';
-import { protect, superAdminOnly } from '../middleware/auth.js';
+import { protect, reportsAccess, requireAnyPermission, requirePermission } from '../middleware/auth.js';
 import { notifyLocationUsers } from '../services/notifications.js';
 import { deleteInvoiceFromR2, r2Configured, uploadInvoiceToR2 } from '../services/r2.js';
 import PushSubscription from '../models/PushSubscription.js';
@@ -45,7 +45,7 @@ router.patch('/notifications/:id/read', async (req, res) => {
   if (!notification) return res.status(404).json({ message: 'Notification not found.' });
   res.json(notification);
 });
-router.get('/reports/held-items', superAdminOnly, async (req, res) => {
+router.get('/reports/held-items', reportsAccess('heldReports'), async (req, res) => {
   const { from, to, location } = req.query;
   const dateFilter = {};
   if (from) dateFilter.$gte = new Date(`${from}T00:00:00.000Z`);
@@ -72,7 +72,7 @@ router.get('/reports/held-items', superAdminOnly, async (req, res) => {
     })));
   res.json(heldItems.sort((a, b) => new Date(b.heldAt) - new Date(a.heldAt)));
 });
-router.get('/reports/transactions', superAdminOnly, async (req, res) => {
+router.get('/reports/transactions', reportsAccess('transactionReports'), async (req, res) => {
   const { from, to, location } = req.query;
   const query = {};
   if (from || to) {
@@ -93,10 +93,10 @@ router.get('/reports/transactions', superAdminOnly, async (req, res) => {
     status: transfer.status
   })));
 });
-router.post('/', async (req, res) => {
+router.post('/', requireAnyPermission(['transfer', 'aodTransport']), async (req, res) => {
   const { destinationLocation, items, notes = '', aodId } = req.body;
   const idempotencyKey = req.get('Idempotency-Key');
-  if (!req.user.location) return res.status(403).json({ message: 'Your account needs an assigned location before you can create transport requests.' });
+  if (!req.user.location) return res.status(403).json({ message: 'Your account needs an assigned location before you can create transfer requests.' });
   if (!destinationLocation || destinationLocation === req.user.location) return res.status(400).json({ message: 'Select another destination location.' });
   if (!await Location.exists({ name: destinationLocation, isActive: true }) || !Array.isArray(items) || !items.length || items.some(item => !item.itemCode || Number(item.quantity) < 1)) return res.status(400).json({ message: 'Add at least one valid item code and destination.' });
   if (idempotencyKey) {
@@ -106,11 +106,11 @@ router.post('/', async (req, res) => {
   let transfer;
   try {
     const source = await Location.findOne({ name: req.user.location, isActive: true });
-    if (!source?.code) return res.status(400).json({ message: 'Your location needs a code before you can create transport requests.' });
+    if (!source?.code) return res.status(400).json({ message: 'Your location needs a code before you can create transfer requests.' });
     const sequence = await LocationSequence.findOneAndUpdate({ locationCode: source.code }, { $inc: { value: 1 } }, { upsert: true, new: true, setDefaultsOnInsert: true });
     const referenceNumber = `${source.code}-${String(sequence.value).padStart(5, '0')}`;
     let aod;
-    if (aodId) { aod = await Aod.findById(aodId); if (!aod || aod.status !== 'awaiting_transport') return res.status(409).json({ message: 'This AOD is not available for transport processing.' }); if (aod.from !== req.user.location) return res.status(403).json({ message: 'Only the AOD source location can create its transport request.' }); if (aod.to !== destinationLocation) return res.status(400).json({ message: 'The transport destination must match the AOD destination.' }); }
+    if (aodId) { aod = await Aod.findById(aodId); if (!aod || aod.status !== 'awaiting_transport') return res.status(409).json({ message: 'This AOD is not available for transfer processing.' }); if (aod.from !== req.user.location) return res.status(403).json({ message: 'Only the AOD source location can create its transfer request.' }); if (aod.to !== destinationLocation) return res.status(400).json({ message: 'The transfer destination must match the AOD destination.' }); }
     transfer = await Transfer.create({ sourceLocation: req.user.location, sourceLocationCode: source.code, referenceNumber, destinationLocation, items, notes, aod: aod?._id, requestedBy: req.user._id, idempotencyKey });
     if (aod) { aod.status = 'transport_requested'; await aod.save(); }
   } catch (error) {
@@ -119,11 +119,11 @@ router.post('/', async (req, res) => {
     }
     throw error;
   }
-  await notifyLocationUsers({ location: 'Head Office', subject: 'New transport request', message: `New transport request from ${req.user.location} to ${destinationLocation}.`, transfer: transfer._id });
+  await notifyLocationUsers({ location: 'Head Office', subject: 'New transfer request', message: `New transfer request from ${req.user.location} to ${destinationLocation}.`, transfer: transfer._id });
   res.status(201).json(transfer);
 });
-router.patch('/:id/items/:index/review', async (req, res) => {
-  if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can review transport items.' });
+router.patch('/:id/items/:index/review', requirePermission('invoiceRequests'), async (req, res) => {
+  if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can review transfer items.' });
   const itemIndex = Number(req.params.index);
   const { reviewStatus, holdRemark = '' } = req.body;
   if (!Number.isInteger(itemIndex) || itemIndex < 0 || !['approved', 'held'].includes(reviewStatus)) return res.status(400).json({ message: 'Choose a valid item review decision.' });
@@ -138,12 +138,12 @@ router.patch('/:id/items/:index/review', async (req, res) => {
   if (transfer.items.every(entry => entry.reviewStatus === 'held')) transfer.status = 'closed';
   await transfer.save();
   if (reviewStatus === 'held') {
-    await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Transport item placed on hold', message: `${item.itemCode} in the transport request to ${transfer.destinationLocation} is on hold. Remark: ${item.holdRemark}`, transfer: transfer._id });
+    await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Transfer item placed on hold', message: `${item.itemCode} in the transfer request to ${transfer.destinationLocation} is on hold. Remark: ${item.holdRemark}`, transfer: transfer._id });
   }
   res.json(transfer);
 });
-router.post('/:id/items/hold', async (req, res) => {
-  if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can hold transport items.' });
+router.post('/:id/items/hold', requirePermission('invoiceRequests'), async (req, res) => {
+  if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can hold transfer items.' });
   const { itemIndexes, holdRemark = '' } = req.body;
   if (!Array.isArray(itemIndexes) || !itemIndexes.length || !holdRemark.trim()) return res.status(400).json({ message: 'Select at least one item and add a hold remark.' });
   const uniqueIndexes = [...new Set(itemIndexes.map(Number))];
@@ -160,10 +160,10 @@ router.post('/:id/items/hold', async (req, res) => {
   if (transfer.items.every(item => item.reviewStatus === 'held')) transfer.status = 'closed';
   await transfer.save();
   const itemCodes = uniqueIndexes.map(index => transfer.items[index].itemCode).join(', ');
-  await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Transport items placed on hold', message: `${itemCodes} in the transport request to ${transfer.destinationLocation} are on hold. Remark: ${holdRemark.trim()}`, transfer: transfer._id });
+  await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Transfer items placed on hold', message: `${itemCodes} in the transfer request to ${transfer.destinationLocation} are on hold. Remark: ${holdRemark.trim()}`, transfer: transfer._id });
   res.json(transfer);
 });
-router.post('/:id/invoice', upload.single('invoice'), async (req, res) => {
+router.post('/:id/invoice', requirePermission('invoiceRequests'), upload.single('invoice'), async (req, res) => {
   if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can upload invoices.' });
   const transfer = await Transfer.findById(req.params.id); if (!transfer) return res.status(404).json({ message: 'Transfer not found.' });
   if (!req.file) return res.status(400).json({ message: 'Attach an invoice document.' });
@@ -177,17 +177,17 @@ router.post('/:id/invoice', upload.single('invoice'), async (req, res) => {
   const oldStorageKey = transfer.invoiceStorageKey;
   transfer.invoiceFile = invoiceUrl; transfer.invoiceStorageKey = storageKey; transfer.invoiceOriginalName = req.file.originalname; transfer.invoiceUploadedAt = new Date(); transfer.status = 'invoice_uploaded'; await transfer.save();
   if (oldStorageKey) await deleteInvoiceFromR2(oldStorageKey).catch(error => console.error('Could not remove replaced R2 invoice:', error.message));
-  await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'TOG uploaded for dispatch', message: `TOG uploaded for transport to ${transfer.destinationLocation}. Review and confirm dispatch.`, transfer: transfer._id });
+  await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'TOG uploaded for dispatch', message: `TOG uploaded for transfer to ${transfer.destinationLocation}. Review and confirm dispatch.`, transfer: transfer._id });
   res.json(transfer);
 });
-router.post('/:id/dispatch', async (req, res) => {
+router.post('/:id/dispatch', requirePermission('transfer'), async (req, res) => {
   const transfer = await Transfer.findById(req.params.id); if (!transfer) return res.status(404).json({ message: 'Transfer not found.' });
-  if (transfer.sourceLocation !== req.user.location || transfer.status !== 'invoice_uploaded') return res.status(403).json({ message: 'This transport is not ready for dispatch from your location.' });
+  if (transfer.sourceLocation !== req.user.location || transfer.status !== 'invoice_uploaded') return res.status(403).json({ message: 'This transfer is not ready for dispatch from your location.' });
   transfer.status = 'awaiting_destination'; transfer.dispatchedAt = new Date(); await transfer.save();
-  await notifyLocationUsers({ location: transfer.destinationLocation, subject: 'Incoming transport dispatched', message: `Incoming transport from ${transfer.sourceLocation} is on its way with invoice attached.`, transfer: transfer._id });
+  await notifyLocationUsers({ location: transfer.destinationLocation, subject: 'Incoming transfer dispatched', message: `Incoming transfer from ${transfer.sourceLocation} is on its way with invoice attached.`, transfer: transfer._id });
   res.json(transfer);
 });
-router.post('/:id/receive', async (req, res) => {
+router.post('/:id/receive', requirePermission('incoming'), async (req, res) => {
   const transfer = await Transfer.findById(req.params.id); if (!transfer) return res.status(404).json({ message: 'Transfer not found.' });
   if (transfer.destinationLocation !== req.user.location || transfer.status !== 'awaiting_destination') return res.status(403).json({ message: 'This transfer is not ready for receipt at your location.' });
   transfer.status = 'completed'; transfer.receivedAt = new Date(); await transfer.save();

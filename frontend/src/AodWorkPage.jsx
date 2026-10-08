@@ -30,6 +30,7 @@ export default function AodWorkPage({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(""),
     [viewing, setViewing] = useState(null),
+    [expandedAodId, setExpandedAodId] = useState(""),
     [autoDownloading, setAutoDownloading] = useState(false),
     [filters, setFilters] = useState({
       from: "",
@@ -140,7 +141,7 @@ export default function AodWorkPage({
       : mode === "headOffice"
         ? "AOD Ready Requests"
         : mode === "transport"
-          ? "AOD Transport Requests"
+          ? "AOD Transfer Requests"
           : mode === "returns"
             ? "AOD Returns"
             : "AOD Destination Requests";
@@ -197,7 +198,7 @@ export default function AodWorkPage({
         <div className="panel-heading">
           <span className="eyebrow">
             {reports
-              ? "SUPER ADMIN"
+              ? "OPERATIONS REPORT"
               : mode === "headOffice" || mode === "transport"
                 ? "HEAD OFFICE"
                 : "AOD WORKFLOW"}
@@ -211,10 +212,10 @@ export default function AodWorkPage({
                 : mode === "headOffice"
                   ? "Review each raised AOD and accept it before sending it to the destination."
                   : mode === "transport"
-                    ? "Accepted AODs waiting for transport processing."
+                    ? "Accepted AODs waiting for transfer processing."
                     : mode === "returns"
                       ? "Mark returned items once they arrive back at your location."
-                      : "Accept the AOD to begin transport, or cancel it to return the items."}
+                      : "Accept the AOD to begin the transfer, or cancel it to return the items."}
           </p>
         </div>
         {reports && (
@@ -282,7 +283,26 @@ export default function AodWorkPage({
             </button>
           </form>
         )}
-        <div className="aod-request-list">
+        {reports && <div className="report-summary-wrap aod-report-summary-wrap">
+          <div className="report-table-scroll">
+          <table className="report-summary-table">
+            <thead><tr><th>AOD no.</th><th>Customer</th><th>Route</th><th>Items</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody>{visible.map((aod) => <React.Fragment key={aod._id}>
+              <tr className="report-summary-row" onDoubleClick={() => setExpandedAodId(expandedAodId === aod._id ? "" : aod._id)} title="Double-click to view full details">
+                <td><strong>{aod.number}</strong></td><td>{aod.customerName}</td><td>{aod.from} → {aod.to}</td><td>{aod.items?.length || 0}</td><td><span className={`aod-request-status ${aod.status}`}>{statusLabel(aod.status)}</span></td><td>{new Date(aod.createdAt).toLocaleDateString()}</td>
+              </tr>
+              {expandedAodId === aod._id && <tr className="report-detail-row"><td colSpan="6"><div className="report-detail report-detail-wide">
+                <div><b>Customer address</b><span>{aod.customerAddress || "—"}</span></div><div><b>Despatched by</b><span>{aod.dispatchedBy || "—"}</span></div><div><b>Items</b><div className="aod-detail-items">{aod.items?.map((item, index) => <span key={`${item.code}-${index}`}>{item.code || "—"} — {item.description || "—"} ({item.packaging || "—"}) × {item.quantity}</span>)}</div></div>
+                <button type="button" className="aod-view-button" onClick={() => openAod(aod)}><FaFileInvoice /> View AOD</button>
+              </div></td></tr>}
+            </React.Fragment>)}</tbody>
+          </table>
+          </div>
+          {!visible.length && <p className="aod-empty">No AOD records found.</p>}
+          <p className="report-expand-hint">Double-click a row to show or hide its full details.</p>
+          <details className="status-help"><summary aria-label="AOD status help" title="Status help">?</summary><div className="status-help-card"><strong>AOD status guide</strong><dl><div><dt>Awaiting destination</dt><dd>Waiting for the destination to accept the AOD.</dd></div><div><dt>Awaiting AOD</dt><dd>Accepted and waiting for transfer processing.</dd></div><div><dt>AOD Requested</dt><dd>A transfer request has been created.</dd></div><div><dt>Returning</dt><dd>The AOD items are being returned.</dd></div><div><dt>Returned</dt><dd>The return has been completed.</dd></div></dl></div></details>
+        </div>}
+        {!reports && <div className="aod-request-list">
           {visible.map((aod) => (
             <article className="aod-request-card" key={aod._id}>
               <div>
@@ -309,7 +329,7 @@ export default function AodWorkPage({
                     disabled={Boolean(busy)}
                     onClick={() => onProceed?.(aod)}
                   >
-                    Proceed to transport
+                    Proceed to transfer
                   </button>
                 )}
                 {!reports && mode === "headOffice" && (
@@ -328,7 +348,7 @@ export default function AodWorkPage({
                         action(aod._id, "decision", { decision: "accept" })
                       }
                     >
-                      Accept & process transport
+                      Accept & process transfer
                     </button>
                     <button
                       className="aod-cancel-button"
@@ -355,7 +375,7 @@ export default function AodWorkPage({
           {!visible.length && (
             <p className="aod-empty">No AOD records found.</p>
           )}
-        </div>
+        </div>}
       </section>
       {viewing && (
         <div
