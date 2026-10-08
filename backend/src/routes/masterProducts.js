@@ -3,11 +3,21 @@ import MasterProduct from "../models/MasterProduct.js";
 import { protect, superAdminOnly } from "../middleware/auth.js";
 
 const router = Router();
-router.use(protect, superAdminOnly);
+router.use(protect);
 
 const cleanText = (value) => String(value ?? "").trim();
 const codeKey = (value) => cleanText(value).toUpperCase();
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+router.get("/lookup/:code", async (req, res) => {
+  const key = codeKey(req.params.code);
+  if (!key) return res.status(400).json({ message: "Enter a product code." });
+  const product = await MasterProduct.findOne({ codeKey: key }).select("productCode productName");
+  if (!product) return res.status(404).json({ message: "Product code was not found in Master Products." });
+  res.json(product);
+});
+
+router.use(superAdminOnly);
 
 router.get("/", async (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
