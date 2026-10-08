@@ -20,12 +20,13 @@ import {
   FaBell,
   FaFileInvoice,
 } from "react-icons/fa6";
-import "./styles.css?v=20261008-aod-sequence";
+import "./styles.css?v=20261008-master-products";
 import TransportPage from "./TransportPage.jsx";
 import HoldReportPage from "./HoldReportPage.jsx";
 import TransactionReportPage from "./TransactionReportPage.jsx";
 import AodPage from "./AodPage.jsx";
 import AodWorkPage from "./AodWorkPage.jsx";
+import MasterProductsPage from "./MasterProductsPage.jsx";
 import rlaLogo from "../assets/logo.png";
 
 // React Icons design system aliases keep icon use consistent throughout the dashboard.
@@ -591,6 +592,17 @@ function ManagerTransferSummary({ user, transfers, locations, onNavigate, canAcc
   </section>;
 }
 
+const getDashboardGreeting = () => {
+  const hour = Number(new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Colombo",
+  }).format(new Date()));
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  return "Good evening";
+};
+
 function Dashboard({ user, onLogout }) {
   const [users, setUsers] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -618,6 +630,7 @@ function Dashboard({ user, onLogout }) {
   const [aodSequence, setAodSequence] = useState(null);
   const [nextAodSequence, setNextAodSequence] = useState("");
   const [sequenceBusy, setSequenceBusy] = useState(false);
+  const [dashboardGreeting, setDashboardGreeting] = useState(getDashboardGreeting);
   const shownNotificationIds = useRef(new Set());
   useEffect(() => {
     request("/locations").then(setLocations);
@@ -691,6 +704,12 @@ function Dashboard({ user, onLogout }) {
   useEffect(() => {
     localStorage.setItem("rla-theme", darkMode ? "dark" : "light");
   }, [darkMode]);
+  useEffect(() => {
+    const updateGreeting = () => setDashboardGreeting(getDashboardGreeting());
+    updateGreeting();
+    const interval = window.setInterval(updateGreeting, 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, []);
   const enablePhoneAlerts = async () => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !window.isSecureContext) {
       setError("Phone notifications require the installed app to run over HTTPS.");
@@ -814,10 +833,11 @@ function Dashboard({ user, onLogout }) {
     }
   };
   const titles = {
-    dashboard: "Good morning",
+    dashboard: "Dashboard",
     locations: "Locations",
     users: "Users",
     roles: "Roles",
+    masterProducts: "Master Products",
     transport: "Transfer",
     invoiceRequests: "TOG Requests",
     heldReports: "Held Item Reports",
@@ -950,6 +970,10 @@ function Dashboard({ user, onLogout }) {
                 <ShieldCheck />
                 <span>Roles</span>
               </a>
+              <a className={page === "masterProducts" ? "active" : ""} onClick={() => navigate("masterProducts")}>
+                <FaFileInvoice />
+                <span>Master Products</span>
+              </a>
             </>
           )}
           {canViewReports && (
@@ -995,7 +1019,7 @@ function Dashboard({ user, onLogout }) {
               </span>
               <h1>
                 {page === "dashboard"
-                  ? `${titles.dashboard}, ${user.name.split(" ")[0]}.`
+                  ? `${dashboardGreeting}, ${user.name.split(" ")[0]}.`
                   : titles[page]}
               </h1>
             </div>
@@ -1040,6 +1064,7 @@ function Dashboard({ user, onLogout }) {
         {page === "aodReports" && hasPagePermission("aodReports") && <AodWorkPage reports user={user} locations={locations} />}
         {page === "heldReports" && hasPagePermission("heldReports") && <HoldReportPage locations={locations} />}
         {page === "transactionReports" && hasPagePermission("transactionReports") && <TransactionReportPage locations={locations} />}
+        {page === "masterProducts" && user.role === "super_admin" && <MasterProductsPage request={request} />}
         {page === "dashboard" && user.role === "super_admin" && (
           <div className="super-admin-dashboard">
           <div className="stats">

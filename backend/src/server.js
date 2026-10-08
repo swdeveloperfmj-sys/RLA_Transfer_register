@@ -8,6 +8,7 @@ import locationRoutes from './routes/locations.js';
 import roleRoutes from './routes/roles.js';
 import transferRoutes from './routes/transfers.js';
 import aodRoutes from './routes/aods.js';
+import masterProductRoutes from './routes/masterProducts.js';
 
 const app = express();
 const localOrigins = /^http:\/\/localhost:\d+$/;
@@ -25,6 +26,7 @@ app.use('/api/locations', locationRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/transfers', transferRoutes);
 app.use('/api/aods', aodRoutes);
+app.use('/api/master-products', masterProductRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use((err, _req, res, _next) => { console.error(err); res.status(500).json({ message: 'An unexpected error occurred.' }); });
