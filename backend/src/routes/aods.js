@@ -5,12 +5,41 @@ import {
   protect,
   reportsAccess,
   requirePermission,
+  superAdminOnly,
 } from "../middleware/auth.js";
 import { notifyLocationUsers } from "../services/notifications.js";
 const router = Router();
 const isHeadOffice = (location) =>
   location?.trim().toLowerCase() === "head office";
+const formatAodNumber = (value) => `AOD-${String(value).padStart(5, "0")}`;
+const allocateAodNumber = async () => {
+  while (true) {
+    const sequence = await AodSequence.findOneAndUpdate(
+      { key: "aod" },
+      { $inc: { value: 1 } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    const number = formatAodNumber(sequence.value);
+    if (!(await Aod.exists({ number }))) return number;
+  }
+};
 router.use(protect);
+router.get("/sequence", superAdminOnly, async (_req, res) => {
+  const sequence = await AodSequence.findOne({ key: "aod" });
+  const nextValue = (sequence?.value || 0) + 1;
+  res.json({ currentValue: sequence?.value || 0, nextValue, nextNumber: formatAodNumber(nextValue) });
+});
+router.put("/sequence", superAdminOnly, async (req, res) => {
+  const nextValue = Number(req.body.nextValue);
+  if (!Number.isSafeInteger(nextValue) || nextValue < 1)
+    return res.status(400).json({ message: "Next AOD sequence must be a whole number greater than 0." });
+  await AodSequence.findOneAndUpdate(
+    { key: "aod" },
+    { $set: { value: nextValue - 1 } },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
+  res.json({ currentValue: nextValue - 1, nextValue, nextNumber: formatAodNumber(nextValue) });
+});
 router.get("/", async (req, res) => {
   const query =
     req.user.role === "super_admin" || isHeadOffice(req.user.location)
@@ -57,16 +86,10 @@ router.post("/", requirePermission("aod"), async (req, res) => {
   const requestedNumber = req.body.number?.trim();
   if (requestedNumber && (await Aod.exists({ number: requestedNumber })))
     return res.status(409).json({ message: "This AOD number already exists." });
-  const sequence = requestedNumber
-    ? null
-    : await AodSequence.findOneAndUpdate(
-        { key: "aod" },
-        { $inc: { value: 1 } },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
-      );
+  const generatedNumber = requestedNumber || await allocateAodNumber();
   const aod = await Aod.create({
     ...req.body,
-    number: requestedNumber || `AOD-${String(sequence.value).padStart(5, "0")}`,
+    number: generatedNumber,
     dispatchedBy: req.body.dispatchedBy?.trim() || req.user.name,
     raisedBy: req.user._id,
   });

@@ -20,7 +20,7 @@ import {
   FaBell,
   FaFileInvoice,
 } from "react-icons/fa6";
-import "./styles.css?v=20261008-aod-dark-text";
+import "./styles.css?v=20261008-aod-sequence";
 import TransportPage from "./TransportPage.jsx";
 import HoldReportPage from "./HoldReportPage.jsx";
 import TransactionReportPage from "./TransactionReportPage.jsx";
@@ -183,9 +183,16 @@ function Login({ onLogin }) {
         <div>
           <span className="eyebrow">OPERATIONS PORTAL</span>
           <h1>
-            Manage every
+            Royal Lanka Agencies (Pvt) Ltd.
+
+
+
+
+
+
+            
             <br />
-            location with clarity.
+            
           </h1>
           <p>Secure, location-based access for your people and operations.</p>
         </div>
@@ -608,6 +615,9 @@ function Dashboard({ user, onLogout }) {
   const [confirmation, setConfirmation] = useState(null);
   const [editingLocation, setEditingLocation] = useState(null);
   const [dashboardTransfers, setDashboardTransfers] = useState([]);
+  const [aodSequence, setAodSequence] = useState(null);
+  const [nextAodSequence, setNextAodSequence] = useState("");
+  const [sequenceBusy, setSequenceBusy] = useState(false);
   const shownNotificationIds = useRef(new Set());
   useEffect(() => {
     request("/locations").then(setLocations);
@@ -617,6 +627,12 @@ function Dashboard({ user, onLogout }) {
         .catch((e) => setError(e.message));
       request("/roles")
         .then(setRoles)
+        .catch((e) => setError(e.message));
+      request("/aods/sequence")
+        .then((sequence) => {
+          setAodSequence(sequence);
+          setNextAodSequence(String(sequence.nextValue));
+        })
         .catch((e) => setError(e.message));
     }
   }, [user.role]);
@@ -761,6 +777,24 @@ function Dashboard({ user, onLogout }) {
       setNewRole("");
     } catch (e) {
       setError(e.message);
+    }
+  };
+  const saveAodSequence = async (event) => {
+    event.preventDefault();
+    setSequenceBusy(true);
+    setError("");
+    try {
+      const sequence = await request("/aods/sequence", {
+        method: "PUT",
+        body: JSON.stringify({ nextValue: Number(nextAodSequence) }),
+      });
+      setAodSequence(sequence);
+      setNextAodSequence(String(sequence.nextValue));
+      toast.success(`Next AOD number set to ${sequence.nextNumber}.`);
+    } catch (sequenceError) {
+      setError(sequenceError.message);
+    } finally {
+      setSequenceBusy(false);
     }
   };
   const removeRole = async (role) => {
@@ -1007,6 +1041,7 @@ function Dashboard({ user, onLogout }) {
         {page === "heldReports" && hasPagePermission("heldReports") && <HoldReportPage locations={locations} />}
         {page === "transactionReports" && hasPagePermission("transactionReports") && <TransactionReportPage locations={locations} />}
         {page === "dashboard" && user.role === "super_admin" && (
+          <div className="super-admin-dashboard">
           <div className="stats">
             <article>
               <span className="icon blue">
@@ -1049,6 +1084,23 @@ function Dashboard({ user, onLogout }) {
                 </small>
               </div>
             </article>
+          </div>
+          <section className="panel aod-sequence-panel">
+            <div className="aod-sequence-copy">
+              <span className="eyebrow">AOD NUMBERING</span>
+              <h2>AOD sequence settings</h2>
+              <p>Set the running number that will be assigned to the next automatically generated AOD.</p>
+            </div>
+            <div className="aod-sequence-current">
+              <small>Next AOD number</small>
+              <strong>{aodSequence?.nextNumber || "Loading..."}</strong>
+            </div>
+            <form className="aod-sequence-form" onSubmit={saveAodSequence}>
+              <label htmlFor="next-aod-sequence">Next sequence number</label>
+              <div><input id="next-aod-sequence" type="number" min="1" step="1" required value={nextAodSequence} onChange={(event) => setNextAodSequence(event.target.value)} /><button disabled={sequenceBusy || !nextAodSequence}>{sequenceBusy ? "Saving..." : "Save sequence"}</button></div>
+              <small>Example: 25 will generate <b>AOD-00025</b> next.</small>
+            </form>
+          </section>
           </div>
         )}
         {page === "dashboard" && user.role !== "super_admin" && <ManagerTransferSummary user={user} transfers={dashboardTransfers} locations={locations} onNavigate={navigate} canAccess={hasPagePermission} />}
