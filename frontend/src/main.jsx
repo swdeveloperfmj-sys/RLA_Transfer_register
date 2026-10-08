@@ -20,7 +20,7 @@ import {
   FaBell,
   FaFileInvoice,
 } from "react-icons/fa6";
-import "./styles.css?v=20261008-master-products";
+import "./styles.css?v=20261008-master-preview";
 import TransportPage from "./TransportPage.jsx";
 import HoldReportPage from "./HoldReportPage.jsx";
 import TransactionReportPage from "./TransactionReportPage.jsx";

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 
 const normalizeHeader = (value) => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 const normalizeCode = (value) => String(value ?? "").trim().toUpperCase();
 
 export default function MasterProductsPage({ request }) {
+  const fileInputRef = useRef(null);
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -13,6 +14,7 @@ export default function MasterProductsPage({ request }) {
   const [appliedSearch, setAppliedSearch] = useState("");
   const [stagedProducts, setStagedProducts] = useState([]);
   const [fileSummary, setFileSummary] = useState(null);
+  const [previewPage, setPreviewPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
@@ -35,6 +37,7 @@ export default function MasterProductsPage({ request }) {
     setMessage("");
     setStagedProducts([]);
     setFileSummary(null);
+    setPreviewPage(1);
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const unique = new Map();
@@ -104,6 +107,8 @@ export default function MasterProductsPage({ request }) {
       setMessage(`${totals.added.toLocaleString()} products added, ${totals.updated.toLocaleString()} updated, and ${totals.existing.toLocaleString()} already unchanged.`);
       setStagedProducts([]);
       setFileSummary(null);
+      setPreviewPage(1);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       setPage(1);
       const data = await request(`/master-products?page=1&limit=50&search=${encodeURIComponent(appliedSearch)}`);
       setProducts(data.products);
@@ -116,12 +121,17 @@ export default function MasterProductsPage({ request }) {
     }
   };
 
+  const previewPageSize = 10;
+  const previewPages = Math.max(1, Math.ceil(stagedProducts.length / previewPageSize));
+  const previewRows = stagedProducts.slice((previewPage - 1) * previewPageSize, previewPage * previewPageSize);
+
   return <section className="master-products-page">
     <section className="panel master-product-import">
       <div className="panel-heading"><span className="eyebrow">PRODUCT MASTER</span><h2>Import master products</h2><p>Upload an XLSX file containing ProductCode and ProductName columns. Duplicate product codes are imported once.</p></div>
       <div className="master-upload-area">
-        <label className="master-file-picker"><input type="file" accept=".xlsx,.xls" onChange={readWorkbook} disabled={busy} /><span>Select Excel file</span><small>Supported formats: .xlsx and .xls</small></label>
+        <label className="master-file-picker"><input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={readWorkbook} disabled={busy} /><span>Select Excel file</span><small>Supported formats: .xlsx and .xls</small></label>
         {fileSummary && <div className="master-file-summary"><div><small>File</small><strong>{fileSummary.fileName}</strong></div><div><small>Valid rows</small><strong>{fileSummary.validRows.toLocaleString()}</strong></div><div><small>Unique products</small><strong>{fileSummary.uniqueRows.toLocaleString()}</strong></div><div><small>Duplicates skipped</small><strong>{fileSummary.duplicateRows.toLocaleString()}</strong></div><div><small>Invalid rows</small><strong>{fileSummary.invalidRows.toLocaleString()}</strong></div></div>}
+        {fileSummary && <section className="master-upload-preview"><div className="master-preview-heading"><div><h3>Excel preview</h3><p>Unique products after duplicate ProductCode rows are removed.</p></div><span>{fileSummary.uniqueRows.toLocaleString()} products</span></div><div className="master-preview-table-wrap"><table><thead><tr><th>#</th><th>Product code</th><th>Product name</th></tr></thead><tbody>{previewRows.map((product, index) => <tr key={normalizeCode(product.productCode)}><td>{(previewPage - 1) * previewPageSize + index + 1}</td><td><strong>{product.productCode}</strong></td><td>{product.productName}</td></tr>)}</tbody></table></div><div className="master-preview-pagination"><button type="button" disabled={previewPage <= 1 || busy} onClick={() => setPreviewPage((current) => current - 1)}>Previous</button><span>Preview page {previewPage} of {previewPages}</span><button type="button" disabled={previewPage >= previewPages || busy} onClick={() => setPreviewPage((current) => current + 1)}>Next</button></div></section>}
         {fileSummary && <div className="master-import-actions"><div><span>Only ProductCode and ProductName will be saved.</span>{busy && <progress max="100" value={progress}>{progress}%</progress>}</div><button type="button" disabled={busy} onClick={importProducts}>{busy ? `Importing ${progress}%` : `Import ${fileSummary.uniqueRows.toLocaleString()} products`}</button></div>}
         {error && <div className="error">{error}</div>}
         {message && <div className="master-import-success">{message}</div>}
