@@ -622,7 +622,7 @@ function Dashboard({ user, onLogout }) {
   const [editingLocation, setEditingLocation] = useState(null);
   const [dashboardTransfers, setDashboardTransfers] = useState([]);
   const [aodSequence, setAodSequence] = useState(null);
-  const [nextAodSequence, setNextAodSequence] = useState("");
+  const [nextAodNumber, setNextAodNumber] = useState("");
   const [sequenceBusy, setSequenceBusy] = useState(false);
   const [dashboardGreeting, setDashboardGreeting] = useState(getDashboardGreeting);
   const shownNotificationIds = useRef(new Set());
@@ -638,7 +638,7 @@ function Dashboard({ user, onLogout }) {
       request("/aods/sequence")
         .then((sequence) => {
           setAodSequence(sequence);
-          setNextAodSequence(String(sequence.nextValue));
+          setNextAodNumber(sequence.nextNumber);
         })
         .catch((e) => setError(e.message));
     }
@@ -799,10 +799,10 @@ function Dashboard({ user, onLogout }) {
     try {
       const sequence = await request("/aods/sequence", {
         method: "PUT",
-        body: JSON.stringify({ nextValue: Number(nextAodSequence) }),
+        body: JSON.stringify({ nextNumber: nextAodNumber }),
       });
       setAodSequence(sequence);
-      setNextAodSequence(String(sequence.nextValue));
+      setNextAodNumber(sequence.nextNumber);
       toast.success(`Next AOD number set to ${sequence.nextNumber}.`);
     } catch (sequenceError) {
       setError(sequenceError.message);
@@ -1108,16 +1108,16 @@ function Dashboard({ user, onLogout }) {
             <div className="aod-sequence-copy">
               <span className="eyebrow">AOD NUMBERING</span>
               <h2>AOD sequence settings</h2>
-              <p>Set the running number that will be assigned to the next automatically generated AOD.</p>
+              <p>Set the full number that will be assigned to the next automatically generated AOD.</p>
             </div>
             <div className="aod-sequence-current">
               <small>Next AOD number</small>
               <strong>{aodSequence?.nextNumber || "Loading..."}</strong>
             </div>
             <form className="aod-sequence-form" onSubmit={saveAodSequence}>
-              <label htmlFor="next-aod-sequence">Next sequence number</label>
-              <div><input id="next-aod-sequence" type="number" min="1" step="1" required value={nextAodSequence} onChange={(event) => setNextAodSequence(event.target.value)} /><button disabled={sequenceBusy || !nextAodSequence}>{sequenceBusy ? "Saving..." : "Save sequence"}</button></div>
-              <small>Example: 25 will generate <b>AOD-00025</b> next.</small>
+              <label htmlFor="next-aod-number">Next AOD number</label>
+              <div><input id="next-aod-number" type="text" required value={nextAodNumber} onChange={(event) => setNextAodNumber(event.target.value)} placeholder="AOD-00025" /><button disabled={sequenceBusy || !nextAodNumber.trim()}>{sequenceBusy ? "Saving..." : "Save sequence"}</button></div>
+              <small>Change the entire number. It must end with a number; for example <b>RLA/AOD-00025</b>. The following AOD will increase that final number automatically.</small>
             </form>
           </section>
           </div>
