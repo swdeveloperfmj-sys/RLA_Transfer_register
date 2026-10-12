@@ -11,7 +11,17 @@ import { notifyLocationUsers } from "../services/notifications.js";
 const router = Router();
 const isHeadOffice = (location) =>
   location?.trim().toLowerCase() === "head office";
-const formatAodNumber = (value) => `AOD-${String(value).padStart(5, "0")}`;
+const formatAodNumber = (value, prefix = "AOD-", padding = 5) =>
+  `${prefix}${String(value).padStart(padding, "0")}`;
+const sequenceNumber = (sequence, value) =>
+  formatAodNumber(value, sequence?.prefix ?? "AOD-", sequence?.padding ?? 5);
+const parseAodNumber = (number) => {
+  const match = number.trim().match(/^(.*?)(\d+)$/);
+  if (!match) return null;
+  const value = Number(match[2]);
+  if (!Number.isSafeInteger(value) || value < 1) return null;
+  return { prefix: match[1], value, padding: match[2].length };
+};
 const allocateAodNumber = async () => {
   while (true) {
     const sequence = await AodSequence.findOneAndUpdate(
@@ -19,7 +29,7 @@ const allocateAodNumber = async () => {
       { $inc: { value: 1 } },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
-    const number = formatAodNumber(sequence.value);
+    const number = sequenceNumber(sequence, sequence.value);
     if (!(await Aod.exists({ number }))) return number;
   }
 };
@@ -27,18 +37,19 @@ router.use(protect);
 router.get("/sequence", superAdminOnly, async (_req, res) => {
   const sequence = await AodSequence.findOne({ key: "aod" });
   const nextValue = (sequence?.value || 0) + 1;
-  res.json({ currentValue: sequence?.value || 0, nextValue, nextNumber: formatAodNumber(nextValue) });
+  res.json({ currentValue: sequence?.value || 0, nextValue, nextNumber: sequenceNumber(sequence, nextValue) });
 });
 router.put("/sequence", superAdminOnly, async (req, res) => {
-  const nextValue = Number(req.body.nextValue);
-  if (!Number.isSafeInteger(nextValue) || nextValue < 1)
-    return res.status(400).json({ message: "Next AOD sequence must be a whole number greater than 0." });
+  const nextNumber = req.body.nextNumber?.trim();
+  const parsedNumber = nextNumber && parseAodNumber(nextNumber);
+  if (!parsedNumber)
+    return res.status(400).json({ message: "Enter a full AOD number ending in a whole number greater than 0." });
   await AodSequence.findOneAndUpdate(
     { key: "aod" },
-    { $set: { value: nextValue - 1 } },
+    { $set: { value: parsedNumber.value - 1, prefix: parsedNumber.prefix, padding: parsedNumber.padding } },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );
-  res.json({ currentValue: nextValue - 1, nextValue, nextNumber: formatAodNumber(nextValue) });
+  res.json({ currentValue: parsedNumber.value - 1, nextValue: parsedNumber.value, nextNumber: formatAodNumber(parsedNumber.value, parsedNumber.prefix, parsedNumber.padding) });
 });
 router.get("/", async (req, res) => {
   const query =
