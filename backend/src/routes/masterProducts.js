@@ -36,6 +36,28 @@ router.get("/", async (req, res) => {
   res.json({ products, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
 });
 
+router.patch("/:id", async (req, res) => {
+  const productCode = cleanText(req.body.productCode);
+  const productName = cleanText(req.body.productName);
+  if (!productCode || !productName) return res.status(400).json({ message: "Enter both a product code and product name." });
+  const product = await MasterProduct.findById(req.params.id);
+  if (!product) return res.status(404).json({ message: "Product not found." });
+  const nextCodeKey = codeKey(productCode);
+  const duplicate = await MasterProduct.exists({ _id: { $ne: product._id }, codeKey: nextCodeKey });
+  if (duplicate) return res.status(409).json({ message: "Another product already uses this product code." });
+  product.productCode = productCode;
+  product.codeKey = nextCodeKey;
+  product.productName = productName;
+  await product.save();
+  res.json(product);
+});
+
+router.delete("/:id", async (req, res) => {
+  const product = await MasterProduct.findByIdAndDelete(req.params.id);
+  if (!product) return res.status(404).json({ message: "Product not found or has already been deleted." });
+  res.json({ message: "Product deleted." });
+});
+
 router.post("/import", async (req, res) => {
   if (!Array.isArray(req.body.products) || !req.body.products.length)
     return res.status(400).json({ message: "Upload at least one valid product." });

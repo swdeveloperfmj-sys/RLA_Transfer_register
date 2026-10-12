@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { FaDownload, FaFilter } from "react-icons/fa";
+import { FaDownload, FaExternalLinkAlt, FaFileInvoice, FaFilter } from "react-icons/fa";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const today = new Date().toISOString().slice(0, 10);
@@ -10,6 +10,7 @@ const monthRange = (value) => {
   return { from: `${value}-01`, to: `${value}-${String(lastDay).padStart(2, "0")}` };
 };
 const statusLabel = (status) => status === "invoice_uploaded" ? "TOG uploaded" : status === "closed" ? "Not Transferable" : status.replaceAll("_", " ");
+const documentUrl = (file) => file?.startsWith("http") ? file : `${API.replace("/api", "")}${file}`;
 const itemList = (items, includeRemark = false) => items.length
   ? items.map((item) => <span key={`${item.itemCode}-${item.quantity}`} className={includeRemark ? "held-item" : "report-item"}>{item.itemCode} × {item.quantity}{includeRemark && item.remark ? ` — ${item.remark}` : ""}</span>)
   : <span className="no-items">—</span>;
@@ -70,7 +71,8 @@ export default function TransactionReportPage({ locations = [] }) {
             <td><strong>{row.referenceNumber}</strong></td><td>{row.sourceLocation} → {row.destinationLocation}</td><td>{row.sentItems.length}</td><td>{row.heldItems.length}</td><td><span className={`transaction-status status-${row.status}`}>{statusLabel(row.status)}</span></td><td>{new Date(row.createdAt).toLocaleDateString()}</td>
           </tr>
           {expandedId === row.id && <tr className="report-detail-row"><td colSpan="6"><div className="report-detail report-detail-wide">
-            <div><b>Sent items</b>{itemList(row.sentItems)}</div><div><b>Held items</b>{itemList(row.heldItems, true)}</div><div><b>Created</b><span>{new Date(row.createdAt).toLocaleString()}</span></div>
+            <div className="report-item-details"><b>Item details</b><div className="report-item-detail-table"><table><thead><tr><th>Item code</th><th>Item name</th><th>Qty.</th><th>Review</th></tr></thead><tbody>{row.sentItems.map((item, index) => <tr key={`${item.itemCode}-${index}`}><td>{item.itemCode}</td><td>{item.itemName || "Not found in Product Master"}</td><td>{item.quantity}</td><td>{item.remark ? <span className="held-item">On hold — {item.remark}</span> : "Sent"}</td></tr>)}</tbody></table></div></div>
+            <div><b>Created</b><span>{new Date(row.createdAt).toLocaleString()}</span></div><div><b>TOG document</b>{row.togFile ? <a className="report-tog-view" href={documentUrl(row.togFile)} target="_blank" rel="noreferrer"><FaFileInvoice /> View TOG{row.togOriginalName ? `: ${row.togOriginalName}` : ""} <FaExternalLinkAlt /></a> : <span className="no-items">No TOG uploaded</span>}</div>
           </div></td></tr>}
         </React.Fragment>)}</tbody>
       </table>

@@ -6,6 +6,7 @@ import Aod from '../models/Aod.js';
 import Notification from '../models/Notification.js';
 import Location from '../models/Location.js';
 import LocationSequence from '../models/LocationSequence.js';
+import MasterProduct from '../models/MasterProduct.js';
 import { protect, reportsAccess, requireAnyPermission, requirePermission } from '../middleware/auth.js';
 import { notifyLocationUsers } from '../services/notifications.js';
 import { deleteInvoiceFromR2, r2Configured, uploadInvoiceToR2 } from '../services/r2.js';
@@ -82,15 +83,28 @@ router.get('/reports/transactions', reportsAccess('transactionReports'), async (
   }
   if (location) query.sourceLocation = location;
   const transfers = await Transfer.find(query).sort({ createdAt: -1 });
+  const productCodes = [...new Set(transfers.flatMap(transfer => transfer.items.map(item => String(item.itemCode || '').trim().toUpperCase())).filter(Boolean))];
+  const products = productCodes.length
+    ? await MasterProduct.find({ codeKey: { $in: productCodes } }).select('codeKey productName')
+    : [];
+  const productNames = new Map(products.map(product => [product.codeKey, product.productName]));
+  const reportItem = item => ({
+    itemCode: item.itemCode,
+    itemName: productNames.get(String(item.itemCode || '').trim().toUpperCase()) || '',
+    quantity: item.quantity,
+    remark: item.holdRemark || ''
+  });
   res.json(transfers.map(transfer => ({
     id: transfer._id,
     referenceNumber: transfer.referenceNumber || String(transfer._id),
     createdAt: transfer.createdAt,
     sourceLocation: transfer.sourceLocation,
     destinationLocation: transfer.destinationLocation,
-    sentItems: transfer.items.map(item => ({ itemCode: item.itemCode, quantity: item.quantity })),
-    heldItems: transfer.items.filter(item => item.reviewStatus === 'held').map(item => ({ itemCode: item.itemCode, quantity: item.quantity, remark: item.holdRemark })),
-    status: transfer.status
+    sentItems: transfer.items.map(reportItem),
+    heldItems: transfer.items.filter(item => item.reviewStatus === 'held').map(reportItem),
+    status: transfer.status,
+    togFile: transfer.invoiceFile || '',
+    togOriginalName: transfer.invoiceOriginalName || ''
   })));
 });
 router.post('/', requireAnyPermission(['transfer', 'aodTransport']), async (req, res) => {
