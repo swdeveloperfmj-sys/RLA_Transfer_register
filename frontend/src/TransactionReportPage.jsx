@@ -17,7 +17,7 @@ const itemList = (items, includeRemark = false) => items.length
 const pdfEscape = (value) => String(value ?? "").replace(/[\\()]/g, "\\$&").replace(/[^\x20-\x7E]/g, "?");
 const downloadPdf = (rows, { label, location }) => {
   const pages = [];
-  for (let index = 0; index < rows.length; index += 4) pages.push(rows.slice(index, index + 4));
+  for (let index = 0; index < rows.length; index += 3) pages.push(rows.slice(index, index + 3));
   const objects = ["<< /Type /Catalog /Pages 2 0 R >>", `<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`];
   pages.forEach((page, index) => {
     const pageId = 3 + index * 2, contentId = pageId + 1;
@@ -25,10 +25,10 @@ const downloadPdf = (rows, { label, location }) => {
     const commands = ["0.05 0.28 0.25 rg 0 790 595 52 re f", "1 1 1 rg", text("F2", 20, 40, 810, "RLA OPERATIONS"), text("F1", 10, 40, 795, "Transaction Report"), "0.14 0.18 0.24 rg", text("F1", 9, 40, 768, `Report period: ${label}`), text("F2", 9, 40, 753, `Sent location: ${location || "All locations"}`), text("F1", 9, 420, 768, `Generated: ${new Date().toLocaleDateString()}`)];
     let y = 726;
     page.forEach((row) => {
-      const sent = row.sentItems.map((item) => `${item.itemCode} x ${item.quantity}`).join(", ");
-      const held = row.heldItems.map((item) => `${item.itemCode} x ${item.quantity}${item.remark ? ` (${item.remark})` : ""}`).join(", ") || "None";
-      commands.push("0.96 0.98 0.98 rg", `40 ${y - 102} 515 96 re f`, "0.78 0.84 0.83 RG 0.5 w", `40 ${y - 102} 515 96 re S`, "0.05 0.28 0.25 rg", text("F2", 10, 52, y - 18, row.referenceNumber), text("F1", 9, 185, y - 18, `${row.sourceLocation}  ->  ${row.destinationLocation}`), text("F2", 8, 52, y - 38, "SENT ITEMS:"), text("F1", 8, 115, y - 38, sent.slice(0, 84)), text("F2", 8, 52, y - 56, "HELD ITEMS:"), text("F1", 8, 115, y - 56, held.slice(0, 84)), text("F2", 8, 52, y - 78, "STATUS:"), text("F1", 8, 115, y - 78, statusLabel(row.status).toUpperCase()), text("F1", 8, 390, y - 78, new Date(row.createdAt).toLocaleDateString()));
-      y -= 112;
+      const sent = row.sentItems.map((item) => `${item.itemCode} - ${item.itemName || "Unknown product"} x ${item.quantity}`).join(", ");
+      const held = row.heldItems.map((item) => `${item.itemCode} - ${item.itemName || "Unknown product"} x ${item.quantity}${item.remark ? ` (${item.remark})` : ""}`).join(", ") || "None";
+      commands.push("0.96 0.98 0.98 rg", `40 ${y - 150} 515 144 re f`, "0.78 0.84 0.83 RG 0.5 w", `40 ${y - 150} 515 144 re S`, "0.05 0.28 0.25 rg", text("F2", 10, 52, y - 18, row.referenceNumber), text("F1", 9, 185, y - 18, `${row.sourceLocation}  ->  ${row.destinationLocation}`), text("F2", 8, 52, y - 42, "SENT ITEMS:"), text("F1", 8, 115, y - 42, sent.slice(0, 78)), text("F2", 8, 52, y - 70, "HELD ITEMS:"), text("F1", 8, 115, y - 70, held.slice(0, 78)), text("F2", 8, 52, y - 104, "STATUS:"), text("F1", 8, 115, y - 104, statusLabel(row.status).toUpperCase()), text("F1", 8, 390, y - 104, new Date(row.createdAt).toLocaleDateString()));
+      y -= 176;
     });
     commands.push("0.35 0.4 0.46 rg", text("F1", 8, 40, 28, "RLA Operations - Confidential internal report"), text("F1", 8, 510, 28, `Page ${index + 1} of ${pages.length}`));
     const content = commands.join("\n");
