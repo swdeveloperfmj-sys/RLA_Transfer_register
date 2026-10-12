@@ -28,7 +28,7 @@ async function api(path, options = {}) {
 export default function TransportPage({ user, locations, incoming = false, invoiceRequests = false, highlightTransferId = "", prefillAod = null, onPrefillUsed }) {
   const [transfers, setTransfers] = useState([]),
     [destinationLocation, setDestination] = useState(""),
-    [items, setItems] = useState([{ itemCode: "", quantity: 1 }]),
+    [items, setItems] = useState([{ itemCode: "", productName: "", quantity: 1, notes: "" }]),
     [error, setError] = useState(""),
     [creating, setCreating] = useState(false),
     [workingTransferId, setWorkingTransferId] = useState(""),
@@ -78,8 +78,20 @@ export default function TransportPage({ user, locations, incoming = false, invoi
         return { rowNumber: index + 2, itemCode, quantity, status: "accepted", reason: "Ready to send" };
       });
       if (!preview.length) throw new Error("The XLSX sheet has no item rows.");
-      setSheetRows(preview);
-      setItems(preview.filter((row) => row.status === "accepted").map((row) => ({ itemCode: row.itemCode, quantity: row.quantity })));
+      const productNames = new Map();
+      await Promise.all(preview.filter((row) => row.status === "accepted").map(async (row) => {
+        const productKey = row.itemCode.toUpperCase();
+        if (productNames.has(productKey)) return;
+        try {
+          const product = await api(`/master-products/lookup/${encodeURIComponent(row.itemCode)}`);
+          productNames.set(productKey, product.productName);
+        } catch {
+          productNames.set(productKey, "");
+        }
+      }));
+      const previewWithNames = preview.map((row) => row.status === "accepted" ? { ...row, productName: productNames.get(row.itemCode.toUpperCase()) || "Not found in Product Master" } : row);
+      setSheetRows(previewWithNames);
+      setItems(previewWithNames.filter((row) => row.status === "accepted").map((row) => ({ itemCode: row.itemCode, productName: productNames.get(row.itemCode.toUpperCase()) || "", quantity: row.quantity, notes: "" })));
       setError("");
     } catch (e) {
       setSheetRows([]);
@@ -90,7 +102,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
   const removeSheetRow = (rowNumber) => {
     setSheetRows((current) => {
       const remaining = current.filter((row) => row.rowNumber !== rowNumber);
-      setItems(remaining.filter((row) => row.status === "accepted").map((row) => ({ itemCode: row.itemCode, quantity: row.quantity })));
+      setItems(remaining.filter((row) => row.status === "accepted").map((row) => ({ itemCode: row.itemCode, productName: row.productName === "Not found in Product Master" ? "" : row.productName || "", quantity: row.quantity, notes: "" })));
       return remaining;
     });
   };
@@ -98,7 +110,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
   useEffect(() => {
     if (!prefillAod) return;
     setDestination(prefillAod.to || "");
-    setItems(prefillAod.items?.map((item) => ({ itemCode: item.code || "", quantity: Number(item.quantity) || 1 })) || [{ itemCode: "", quantity: 1 }]);
+    setItems(prefillAod.items?.map((item) => ({ itemCode: item.code || "", productName: item.description || "", quantity: Number(item.quantity) || 1, notes: "" })) || [{ itemCode: "", productName: "", quantity: 1, notes: "" }]);
     setAodReference(prefillAod);
     setRequestMode("manual");
     setFormOpen(true);
@@ -116,6 +128,17 @@ export default function TransportPage({ user, locations, incoming = false, invoi
     const interval = window.setInterval(load, 5000);
     return () => window.clearInterval(interval);
   }, []);
+  const lookupProduct = async (index) => {
+    const itemCode = items[index]?.itemCode?.trim();
+    if (!itemCode || items[index]?.productName) return;
+    setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, lookingUp: true, lookupError: "" } : item));
+    try {
+      const product = await api(`/master-products/lookup/${encodeURIComponent(itemCode)}`);
+      setItems((current) => current.map((item, itemIndex) => itemIndex === index && item.itemCode.trim() === itemCode ? { ...item, productName: product.productName, lookingUp: false, lookupError: "" } : item));
+    } catch (lookupError) {
+      setItems((current) => current.map((item, itemIndex) => itemIndex === index && item.itemCode.trim() === itemCode ? { ...item, lookingUp: false, lookupError: lookupError.message || "Product code was not found." } : item));
+    }
+  };
   const create = async (event) => {
     event.preventDefault();
     if (createInFlight.current) return;
@@ -133,7 +156,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
         body: JSON.stringify({ destinationLocation, items: validItems, notes: aodReference ? `Created from AOD ${aodReference.number}` : "", aodId: aodReference?._id }),
       });
       setDestination("");
-      setItems([{ itemCode: "", quantity: 1 }]);
+      setItems([{ itemCode: "", productName: "", quantity: 1, notes: "" }]);
       setSheetRows([]);
       setAodReference(null);
       await load();
@@ -262,15 +285,15 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                 </label>
                 <button type="button" className="template-download" onClick={downloadTemplate}><FaFileInvoice /> Download XLSX template</button>
               </div>
-              <p className="spreadsheet-help">Use the template with <strong>Item code</strong> and <strong>Quantity</strong> columns. Only accepted rows will be sent.</p>
+              <p className="spreadsheet-help">Use the template with <strong>Item code</strong> and <strong>Quantity</strong> columns. Item names are filled from Product Master. Only accepted rows will be sent.</p>
               {sheetRows.length > 0 && <div className="sheet-preview">
-                <div className="sheet-preview-head"><span>Row</span><span>Item code</span><span>Quantity</span><span>Status</span><span>Action</span></div>
+                <div className="sheet-preview-head"><span>Row</span><span>Item code</span><span>Item name</span><span>Quantity</span><span>Status</span><span>Action</span></div>
                 {sheetRows.map((row) => <div className={`sheet-preview-row ${row.status}`} key={row.rowNumber}>
-                  <span>{row.rowNumber}</span><span>{row.itemCode}</span><span>{row.quantity}</span><span><b>{row.status}</b><small>{row.reason}</small></span><button type="button" className="remove-sheet-row" onClick={() => removeSheetRow(row.rowNumber)} aria-label={`Remove row ${row.rowNumber}`} title="Remove row"><FaTrashCan /></button>
+                  <span>{row.rowNumber}</span><span>{row.itemCode}</span><span>{row.productName || "—"}</span><span>{row.quantity}</span><span><b>{row.status}</b><small>{row.reason}</small></span><button type="button" className="remove-sheet-row" onClick={() => removeSheetRow(row.rowNumber)} aria-label={`Remove row ${row.rowNumber}`} title="Remove row"><FaTrashCan /></button>
                 </div>)}
               </div>}
             </> : <>
-            <div className="items-form-head"><span>Item code</span><span>Quantity</span></div>
+            <div className="items-form-head"><span>Item code</span><span>Item name</span><span>Quantity</span><span>Remark <small>(optional)</small></span></div>
             {items.map((item, index) => (
               <div className={`item-row ${requestMode === "excel" ? "spreadsheet-row" : ""}`} key={index}>
                 <input
@@ -279,11 +302,13 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                   onChange={(e) =>
                     setItems(
                       items.map((x, i) =>
-                        i === index ? { ...x, itemCode: e.target.value } : x,
+                        i === index ? { ...x, itemCode: e.target.value, productName: "", lookupError: "" } : x,
                       ),
                     )
                   }
+                  onBlur={() => lookupProduct(index)}
                 />
+                <div className="transfer-product-name"><input aria-label="Item name" readOnly value={item.lookingUp ? "Looking up..." : item.productName} placeholder="Auto-filled from Product Master" />{item.lookupError && <small>{item.lookupError}</small>}</div>
                 <input
                   type="number"
                   min="1"
@@ -297,6 +322,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                     )
                   }
                 />
+                <input aria-label="Optional item remark" placeholder="Optional remark" value={item.notes || ""} onChange={(e) => setItems(items.map((x, i) => i === index ? { ...x, notes: e.target.value } : x))} />
                 {index > 0 && (
                   <button
                     type="button"
@@ -315,7 +341,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
             <button
               type="button"
               className="add-item"
-              onClick={() => setItems([...items, { itemCode: "", quantity: 1 }])}
+              onClick={() => setItems([...items, { itemCode: "", productName: "", quantity: 1, notes: "" }])}
             >
               <FaPlus /> Add another item
             </button>
@@ -386,6 +412,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                     {headOffice && invoiceRequests && transfer.status !== "invoice_uploaded" && <input className="hold-select" type="checkbox" checked={(holdSelections[transfer._id] || []).includes(index)} disabled={Boolean(workingTransferId) || transfer.items.some((entry) => entry.reviewStatus === "held")} onChange={(event) => setHoldSelections((current) => ({ ...current, [transfer._id]: event.target.checked ? [...(current[transfer._id] || []), index] : (current[transfer._id] || []).filter((selected) => selected !== index) }))} aria-label={`Select ${item.itemCode || item.name} to hold`} />}
                     <span>
                       {item.itemCode || item.name}
+                      {item.notes && <small className="item-note">Remark: {item.notes}</small>}
                       {item.reviewStatus === "held" && <small className="item-held">On hold: {item.holdRemark}</small>}
                       {item.reviewStatus === "approved" && <small className="item-approved">Approved</small>}
                     </span>
