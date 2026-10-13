@@ -25,7 +25,7 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(data?.message || "Request failed.");
   return data;
 }
-export default function TransportPage({ user, locations, incoming = false, invoiceRequests = false, highlightTransferId = "", prefillAod = null, onPrefillUsed }) {
+export default function TransportPage({ user, locations, incoming = false, invoiceRequests = false, highlightTransferId = "", prefillAod = null, onPrefillUsed, dashboardFilter = null }) {
   const [transfers, setTransfers] = useState([]),
     [destinationLocation, setDestination] = useState(""),
     [items, setItems] = useState([{ itemCode: "", productName: "", quantity: 1, notes: "" }]),
@@ -218,7 +218,9 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       setWorkingTransferId("");
     }
   };
-  const scopedTransfers = incoming
+  const scopedTransfers = dashboardFilter?.allLocations
+    ? transfers
+    : incoming
     ? transfers.filter(
         (t) =>
           t.destinationLocation === user.location &&
@@ -227,9 +229,12 @@ export default function TransportPage({ user, locations, incoming = false, invoi
     : invoiceRequests
       ? transfers.filter((t) => ["awaiting_head_office", "invoice_uploaded"].includes(t.status))
       : transfers.filter((t) => t.sourceLocation === user.location);
-  const visible = !incoming && !invoiceRequests && timeFilter === "daily"
+  const baseVisible = !dashboardFilter && !incoming && !invoiceRequests && timeFilter === "daily"
     ? scopedTransfers.filter((transfer) => new Date(transfer.createdAt).toDateString() === new Date().toDateString())
     : scopedTransfers;
+  const visible = dashboardFilter?.statuses?.length
+    ? baseVisible.filter((transfer) => dashboardFilter.statuses.includes(transfer.status))
+    : baseVisible;
   const statusLabels = {
     awaiting_head_office: "Waiting for TOG",
     invoice_uploaded: "TOG uploaded",
@@ -367,7 +372,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
             <p>
               {invoiceRequests
                 ? "Review location requests and attach the correct TOG."
-                : "Track each request from approval to delivery."}
+                : dashboardFilter?.label || "Track each request from approval to delivery."}
             </p>
           </div>
           <div className="transfer-heading-actions">
