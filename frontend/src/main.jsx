@@ -515,16 +515,16 @@ function ManagerTransferSummary({ user, transfers, locations, onNavigate, canAcc
   const selectedLocationTransfers = selectedLocationFlow
     ? transfers.filter((transfer) => selectedLocationFlow.direction === "outgoing" ? transfer.sourceLocation === selectedLocationFlow.location : transfer.destinationLocation === selectedLocationFlow.location)
     : [];
-  const openPage = (preferred, fallback) => {
-    const target = canAccess(preferred) ? preferred : canAccess(fallback) ? fallback : "";
-    if (target) onNavigate(target);
+  const openPage = (preferredPermission, preferredPage, fallbackPermission, fallbackPage, filter = null) => {
+    const target = canAccess(preferredPermission) ? preferredPage : canAccess(fallbackPermission) ? fallbackPage : "";
+    if (target) onNavigate(target, filter);
   };
   return <section className="manager-transfer-dashboard">
     <div className="manager-overview-cards">
-      <button type="button" className="manager-summary-card outgoing" disabled={!canAccess("transfer")} onClick={() => openPage("transfer", "incoming")}><small>Outgoing transfers</small><strong>{outgoing.length}</strong><span>Sent from {user.location}</span><em>View transfers →</em></button>
-      <button type="button" className="manager-summary-card incoming" disabled={!canAccess("incoming")} onClick={() => openPage("incoming", "transfer")}><small>Incoming transfers</small><strong>{incoming.length}</strong><span>Sent to {user.location}</span><em>View incoming →</em></button>
-      <button type="button" className="manager-summary-card progress" disabled={!canAccess("transfer") && !canAccess("incoming")} onClick={() => openPage("transfer", "incoming")}><small>In progress</small><strong>{inProgress}</strong><span>Waiting or in transit</span><em>View activity →</em></button>
-      <button type="button" className="manager-summary-card completed" disabled={!canAccess("incoming") && !canAccess("transfer")} onClick={() => openPage("incoming", "transfer")}><small>Completed</small><strong>{completed}</strong><span>Successfully received</span><em>View completed →</em></button>
+      <button type="button" className="manager-summary-card outgoing" disabled={!canAccess("transfer")} onClick={() => openPage("transfer", "transport", "incoming", "incoming", { allDates: true, label: "Head Office outgoing transfers" })}><small>Outgoing transfers</small><strong>{outgoing.length}</strong><span>Sent from {user.location}</span><em>View transfers →</em></button>
+      <button type="button" className="manager-summary-card incoming" disabled={!canAccess("incoming")} onClick={() => openPage("incoming", "incoming", "transfer", "transport")}><small>Incoming transfers</small><strong>{incoming.length}</strong><span>Sent to {user.location}</span><em>View incoming →</em></button>
+      <button type="button" className="manager-summary-card progress" disabled={!canAccess("transfer") && !canAccess("incoming")} onClick={() => openPage("transfer", "transport", "incoming", "incoming", { allLocations: true, statuses: ["awaiting_head_office", "invoice_uploaded", "awaiting_destination"], label: "All in-progress transfers" })}><small>In progress</small><strong>{inProgress}</strong><span>Waiting or in transit</span><em>View activity →</em></button>
+      <button type="button" className="manager-summary-card completed" disabled={!canAccess("incoming") && !canAccess("transfer")} onClick={() => openPage("incoming", "incoming", "transfer", "transport", { allLocations: true, statuses: ["completed"], label: "All completed transfers" })}><small>Completed</small><strong>{completed}</strong><span>Successfully received</span><em>View completed →</em></button>
     </div>
     {isHeadOfficeManager && <section className="panel head-office-location-summary">
       <div className="location-summary-heading"><div><span>HEAD OFFICE OVERVIEW</span><h2>All location transfer summary</h2><p>Click a transfer count to expand its details below the selected location.</p></div><strong>{locationSummaries.length}<small>Locations</small></strong></div>
@@ -575,8 +575,9 @@ function ManagerTransferSummary({ user, transfers, locations, onNavigate, canAcc
       <div className="manager-activity-list">
         {recent.map((transfer) => {
           const direction = transfer.sourceLocation === user.location ? "Outgoing" : "Incoming";
-          const target = direction === "Outgoing" ? "transfer" : "incoming";
-          return <article className={canAccess(target) ? "is-clickable" : ""} key={transfer._id} onClick={() => canAccess(target) && onNavigate(target)}><span className={`manager-activity-direction ${direction.toLowerCase()}`}>{direction}</span><div><strong>{transfer.referenceNumber}</strong><span>{transfer.sourceLocation} → {transfer.destinationLocation}</span></div><div className="manager-activity-meta"><b>{statusLabels[transfer.status] || transfer.status?.replaceAll("_", " ")}</b><small>{new Date(transfer.createdAt).toLocaleString()}</small></div></article>;
+          const targetPermission = direction === "Outgoing" ? "transfer" : "incoming";
+          const targetPage = direction === "Outgoing" ? "transport" : "incoming";
+          return <article className={canAccess(targetPermission) ? "is-clickable" : ""} key={transfer._id} onClick={() => canAccess(targetPermission) && onNavigate(targetPage)}><span className={`manager-activity-direction ${direction.toLowerCase()}`}>{direction}</span><div><strong>{transfer.referenceNumber}</strong><span>{transfer.sourceLocation} → {transfer.destinationLocation}</span></div><div className="manager-activity-meta"><b>{statusLabels[transfer.status] || transfer.status?.replaceAll("_", " ")}</b><small>{new Date(transfer.createdAt).toLocaleString()}</small></div></article>;
         })}
         {!recent.length && <p className="manager-activity-empty">No transfer activity is available yet.</p>}
       </div>
@@ -619,6 +620,7 @@ function Dashboard({ user, onLogout }) {
   const [confirmation, setConfirmation] = useState(null);
   const [editingLocation, setEditingLocation] = useState(null);
   const [dashboardTransfers, setDashboardTransfers] = useState([]);
+  const [dashboardTransferFilter, setDashboardTransferFilter] = useState(null);
   const [aodSequence, setAodSequence] = useState(null);
   const [nextAodNumber, setNextAodNumber] = useState("");
   const [sequenceBusy, setSequenceBusy] = useState(false);
@@ -859,9 +861,10 @@ function Dashboard({ user, onLogout }) {
     setNotifications((all) => all.map((notification) => matchedIds.has(notification._id) ? { ...notification, read: true } : notification));
     matched.forEach((notification) => request(`/transfers/notifications/${notification._id}/read`, { method: "PATCH" }).catch(() => {}));
   };
-  const navigate = (nextPage, event) => {
+  const navigate = (nextPage, event, filter = null) => {
     event?.preventDefault();
     markTabNotificationsRead(nextPage);
+    setDashboardTransferFilter(filter);
     setPage(nextPage);
     setSelectedTransferId("");
     if (window.innerWidth < 860) setSidebarCollapsed(true);
@@ -1045,9 +1048,9 @@ function Dashboard({ user, onLogout }) {
           )}
         </header>
         {error && <div className="error">{error}</div>}
-        {page === "transport" && (hasPagePermission("transfer") || hasPagePermission("aodTransport")) && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} prefillAod={transportAod} onPrefillUsed={() => setTransportAod(null)} />}
+        {page === "transport" && (hasPagePermission("transfer") || hasPagePermission("aodTransport")) && <TransportPage user={user} locations={locations} highlightTransferId={selectedTransferId} prefillAod={transportAod} onPrefillUsed={() => setTransportAod(null)} dashboardFilter={dashboardTransferFilter} />}
         {page === "invoiceRequests" && hasPagePermission("invoiceRequests") && <TransportPage user={user} locations={locations} invoiceRequests highlightTransferId={selectedTransferId} />}
-        {page === "incoming" && hasPagePermission("incoming") && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} />}
+        {page === "incoming" && hasPagePermission("incoming") && <TransportPage user={user} locations={locations} incoming highlightTransferId={selectedTransferId} dashboardFilter={dashboardTransferFilter} />}
         {page === "aod" && hasPagePermission("aod") && <AodPage user={user} locations={locations} />}
         {page === "myAods" && hasPagePermission("myAods") && <AodWorkPage user={user} locations={locations} mode="mine" />}
         {page === "aodRequests" && hasPagePermission("aodRequests") && <AodWorkPage user={user} locations={locations} mode="destination" />}
@@ -1120,7 +1123,7 @@ function Dashboard({ user, onLogout }) {
           </section>
           </div>
         )}
-        {page === "dashboard" && user.role !== "super_admin" && <ManagerTransferSummary user={user} transfers={dashboardTransfers} locations={locations} onNavigate={navigate} canAccess={hasPagePermission} />}
+        {page === "dashboard" && user.role !== "super_admin" && <ManagerTransferSummary user={user} transfers={dashboardTransfers} locations={locations} onNavigate={(target, filter) => navigate(target, undefined, filter)} canAccess={hasPagePermission} />}
         {user.role === "super_admin" && page === "locations" && (
           <section className="panel locations-panel">
             <div className="panel-heading">

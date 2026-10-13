@@ -218,7 +218,9 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       setWorkingTransferId("");
     }
   };
-  const scopedTransfers = incoming
+  const scopedTransfers = dashboardFilter?.allLocations
+    ? transfers
+    : incoming
     ? transfers.filter(
         (t) =>
           t.destinationLocation === user.location &&
@@ -370,7 +372,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
             <p>
               {invoiceRequests
                 ? "Review location requests and attach the correct TOG."
-                : "Track each request from approval to delivery."}
+                : dashboardFilter?.label || "Track each request from approval to delivery."}
             </p>
           </div>
           <div className="transfer-heading-actions">
