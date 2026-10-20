@@ -7,7 +7,7 @@ import Notification from '../models/Notification.js';
 import Location from '../models/Location.js';
 import LocationSequence from '../models/LocationSequence.js';
 import MasterProduct from '../models/MasterProduct.js';
-import { protect, reportsAccess, requireAnyPermission, requirePermission } from '../middleware/auth.js';
+import { protect, reportsAccess, requireAnyPermission, requirePermission, superAdminOnly } from '../middleware/auth.js';
 import { notifyLocationUsers } from '../services/notifications.js';
 import { deleteInvoiceFromR2, r2Configured, uploadInvoiceToR2 } from '../services/r2.js';
 import PushSubscription from '../models/PushSubscription.js';
@@ -30,7 +30,7 @@ router.post('/push/subscribe', async (req, res) => {
   res.status(201).json({ message: 'Phone notifications enabled.' });
 });
 router.get('/', async (req, res) => {
-  const query = isHeadOffice(req.user.location) ? {} : { $or: [{ sourceLocation: req.user.location }, { destinationLocation: req.user.location }] };
+  const query = req.user.role === 'super_admin' || isHeadOffice(req.user.location) ? {} : { $or: [{ sourceLocation: req.user.location }, { destinationLocation: req.user.location }] };
   res.json(await Transfer.find(query).populate('requestedBy', 'name email').populate('aod', 'number').sort({ createdAt: -1 }));
 });
 router.get('/notifications', async (req, res) => {
@@ -192,6 +192,20 @@ router.post('/:id/invoice', requirePermission('invoiceRequests'), upload.single(
   transfer.invoiceFile = invoiceUrl; transfer.invoiceStorageKey = storageKey; transfer.invoiceOriginalName = req.file.originalname; transfer.invoiceUploadedAt = new Date(); transfer.status = 'invoice_uploaded'; await transfer.save();
   if (oldStorageKey) await deleteInvoiceFromR2(oldStorageKey).catch(error => console.error('Could not remove replaced R2 invoice:', error.message));
   await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'TOG uploaded for dispatch', message: `TOG uploaded for transfer to ${transfer.destinationLocation}. Review and confirm dispatch.`, transfer: transfer._id });
+  res.json(transfer);
+});
+router.post('/:id/cancel', superAdminOnly, async (req, res) => {
+  const transfer = await Transfer.findById(req.params.id);
+  if (!transfer) return res.status(404).json({ message: 'Transfer not found.' });
+  if (!['awaiting_head_office', 'invoice_uploaded'].includes(transfer.status)) {
+    return res.status(409).json({ message: 'Only TOG requests that have not been dispatched can be cancelled.' });
+  }
+  transfer.status = 'cancelled';
+  transfer.cancelledAt = new Date();
+  transfer.cancelledBy = req.user._id;
+  await transfer.save();
+  if (transfer.aod) await Aod.findByIdAndUpdate(transfer.aod, { status: 'awaiting_transport' });
+  await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'Transfer request cancelled', message: `Transfer request to ${transfer.destinationLocation} was cancelled by a Super Admin before dispatch.`, transfer: transfer._id });
   res.json(transfer);
 });
 router.post('/:id/dispatch', requirePermission('transfer'), async (req, res) => {

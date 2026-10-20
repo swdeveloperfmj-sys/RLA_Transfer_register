@@ -21,8 +21,10 @@ const transferSchema = new mongoose.Schema({
   invoiceFile: String,
   invoiceStorageKey: String,
   invoiceOriginalName: String,
-  status: { type: String, enum: ['awaiting_head_office', 'invoice_uploaded', 'awaiting_destination', 'completed', 'closed'], default: 'awaiting_head_office' },
-  invoiceUploadedAt: Date, dispatchedAt: Date, receivedAt: Date
+  status: { type: String, enum: ['awaiting_head_office', 'invoice_uploaded', 'awaiting_destination', 'completed', 'closed', 'cancelled'], default: 'awaiting_head_office' },
+  invoiceUploadedAt: Date, dispatchedAt: Date, receivedAt: Date,
+  cancelledAt: Date,
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 transferSchema.index({ requestedBy: 1, idempotencyKey: 1 }, { unique: true, sparse: true });
 export default mongoose.model('Transfer', transferSchema);

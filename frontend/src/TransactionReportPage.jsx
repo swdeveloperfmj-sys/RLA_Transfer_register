@@ -9,7 +9,7 @@ const monthRange = (value) => {
   const lastDay = new Date(year, monthNumber, 0).getDate();
   return { from: `${value}-01`, to: `${value}-${String(lastDay).padStart(2, "0")}` };
 };
-const statusLabel = (status) => status === "invoice_uploaded" ? "TOG uploaded" : status === "closed" ? "Not Transferable" : status.replaceAll("_", " ");
+const statusLabel = (status) => status === "invoice_uploaded" ? "TOG uploaded" : status === "closed" ? "Not Transferable" : status === "cancelled" ? "Cancelled" : status.replaceAll("_", " ");
 const documentUrl = (file) => file?.startsWith("http") ? file : `${API.replace("/api", "")}${file}`;
 const itemList = (items, includeRemark = false) => items.length
   ? items.map((item) => <span key={`${item.itemCode}-${item.quantity}`} className={includeRemark ? "held-item" : "report-item"}>{item.itemCode} × {item.quantity}{includeRemark && item.remark ? ` — ${item.remark}` : ""}</span>)
