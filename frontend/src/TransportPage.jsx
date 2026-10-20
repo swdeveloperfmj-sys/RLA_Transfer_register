@@ -106,7 +106,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       return remaining;
     });
   };
-  const headOffice = user.location?.trim().toLowerCase() === "head office";
+  const headOffice = user.role === "super_admin" || user.location?.trim().toLowerCase() === "head office";
   useEffect(() => {
     if (!prefillAod) return;
     setDestination(prefillAod.to || "");
@@ -211,6 +211,18 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       });
       setHoldSelections((current) => ({ ...current, [transferId]: [] }));
       setHoldRemarks((current) => ({ ...current, [transferId]: "" }));
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setWorkingTransferId("");
+    }
+  };
+  const cancelTogRequest = async (transfer) => {
+    if (workingTransferId || !window.confirm(`Cancel ${transfer.referenceNumber || "this TOG request"}? It will no longer be available for dispatch.`)) return;
+    setWorkingTransferId(transfer._id);
+    try {
+      await api(`/transfers/${transfer._id}/cancel`, { method: "POST" });
       await load();
     } catch (e) {
       setError(e.message);
@@ -497,6 +509,11 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                       />
                     </label>
                   )}
+                {user.role === "super_admin" && invoiceRequests && ["awaiting_head_office", "invoice_uploaded"].includes(transfer.status) && (
+                  <button type="button" className="tog-cancel-button" disabled={Boolean(workingTransferId)} onClick={() => cancelTogRequest(transfer)}>
+                    <FaXmark /> {workingTransferId === transfer._id ? "Cancelling…" : "Cancel request"}
+                  </button>
+                )}
                 {transfer.sourceLocation === user.location &&
                   transfer.status === "invoice_uploaded" && (
                   <button disabled={Boolean(workingTransferId)} onClick={() => action(transfer._id, "dispatch")}>
