@@ -1,3 +1,4 @@
+import { isHeadOffice as isHeadOfficeLocation } from "../config/headOffice.js";
 import nodemailer from 'nodemailer';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
@@ -44,10 +45,10 @@ export const notifyLocationUsers = async ({ location, message, subject = 'RLA Op
   const recipients = await User.find({
     isActive: true,
     $or: [
-      { location },
+      { location: isHeadOfficeLocation(location) ? /^\s*(head office|ho)\s*$/i : location },
       // Super admins have no assigned location in the default seed, but are the
       // responsible users for Head Office requests.
-      ...(location?.trim().toLowerCase() === 'head office' ? [{ role: 'super_admin' }] : [])
+      ...(isHeadOfficeLocation(location) ? [{ role: 'super_admin' }] : [])
     ]
   }).select('name email mobileNumber location role');
   await Promise.all(recipients.map(async recipient => {

@@ -1,3 +1,4 @@
+import { isHeadOffice as isHeadOfficeLocation } from "../config/headOffice.js";
 import { Router } from "express";
 import Aod from "../models/Aod.js";
 import AodSequence from "../models/AodSequence.js";
@@ -9,8 +10,6 @@ import {
 } from "../middleware/auth.js";
 import { notifyLocationUsers } from "../services/notifications.js";
 const router = Router();
-const isHeadOffice = (location) =>
-  location?.trim().toLowerCase() === "head office";
 const formatAodNumber = (value, prefix = "AOD-", padding = 5) =>
   `${prefix}${String(value).padStart(padding, "0")}`;
 const sequenceNumber = (sequence, value) =>
@@ -53,7 +52,7 @@ router.put("/sequence", superAdminOnly, async (req, res) => {
 });
 router.get("/", async (req, res) => {
   const query =
-    req.user.role === "super_admin" || isHeadOffice(req.user.location)
+    req.user.role === "super_admin" || isHeadOfficeLocation(req.user.location)
       ? {}
       : { $or: [{ raisedBy: req.user._id }, { to: req.user.location }] };
   res.json(

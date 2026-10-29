@@ -1,3 +1,4 @@
+import { isHeadOffice as isHeadOfficeLocation } from "./headOffice.js";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import toast, { Toaster } from "react-hot-toast";
@@ -63,7 +64,7 @@ const ALL_USER_PERMISSIONS = USER_PERMISSION_GROUPS.flatMap((group) => group.opt
 const DEFAULT_USER_PERMISSIONS = ALL_USER_PERMISSIONS.filter((permission) => !permission.endsWith("Reports"));
 const legacyPermissionsFor = (user) => user.role === "super_admin"
   ? ALL_USER_PERMISSIONS
-  : [...DEFAULT_USER_PERMISSIONS, ...(user.role === "manager" && user.location?.trim().toLowerCase() === "head office" ? ["heldReports", "transactionReports", "aodReports"] : [])];
+  : [...DEFAULT_USER_PERMISSIONS, ...(user.role === "manager" && isHeadOfficeLocation(user.location) ? ["heldReports", "transactionReports", "aodReports"] : [])];
 
 function PermissionSelector({ permissions, onChange, disabled = false }) {
   const toggle = (key) => onChange(permissions.includes(key) ? permissions.filter((permission) => permission !== key) : [...permissions, key]);
@@ -505,7 +506,7 @@ function ManagerTransferSummary({ user, transfers, locations, onNavigate, canAcc
     closed: "Not Transferable",
   };
   const recent = [...transfers].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6);
-  const isHeadOfficeManager = user.role === "manager" && user.location?.trim().toLowerCase() === "head office";
+  const isHeadOfficeManager = user.role === "manager" && isHeadOfficeLocation(user.location);
   const locationSummaries = locations.map((location) => {
     const locationOutgoing = transfers.filter((transfer) => transfer.sourceLocation === location.name);
     const locationIncoming = transfers.filter((transfer) => transfer.destinationLocation === location.name);
@@ -845,7 +846,7 @@ function Dashboard({ user, onLogout }) {
     incoming: "Incoming transfer",
   };
   const markTabNotificationsRead = (target) => {
-    const isHeadOfficeUser = user.location?.trim().toLowerCase() === "head office";
+    const isHeadOfficeUser = isHeadOfficeLocation(user.location);
     const matched = notifications.filter((notification) => {
       if (notification.read || (!notification.transfer && !notification.aod)) return false;
       if (target === "incoming") return notification.transfer?.destinationLocation === user.location;
@@ -882,13 +883,13 @@ function Dashboard({ user, onLogout }) {
     if (notification.aod?._id) { setPage(notification.aod.status === "awaiting_transport" && notification.aod.from === user.location ? "aodTransport" : notification.aod.status === "returning" && notification.aod.from === user.location ? "aodReturns" : "aodRequests"); setSelectedTransferId(""); return; }
     if (!transfer?._id) return;
     const isIncoming = user.location === transfer.destinationLocation;
-    const isInvoiceRequest = user.location?.trim().toLowerCase() === "head office" && ["awaiting_head_office", "invoice_uploaded"].includes(transfer.status);
+    const isInvoiceRequest = isHeadOfficeLocation(user.location) && ["awaiting_head_office", "invoice_uploaded"].includes(transfer.status);
     setSelectedTransferId(transfer._id);
     setPage(isIncoming ? "incoming" : isInvoiceRequest ? "invoiceRequests" : "transport");
     if (window.innerWidth < 860) setSidebarCollapsed(true);
   };
   const unreadCount = notifications.filter((notification) => !notification.read).length;
-  const isHeadOffice = user.location?.trim().toLowerCase() === "head office";
+  const isHeadOffice = isHeadOfficeLocation(user.location);
   const legacyPermissions = legacyPermissionsFor(user);
   const hasPagePermission = (permission) => user.role === "super_admin" || (Array.isArray(user.permissions) ? user.permissions.includes(permission) : legacyPermissions.includes(permission));
   const canViewReports = ["heldReports", "transactionReports", "aodReports"].some(hasPagePermission);

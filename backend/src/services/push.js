@@ -1,3 +1,4 @@
+import { isHeadOffice as isHeadOfficeLocation } from "../config/headOffice.js";
 import webpush from 'web-push';
 import PushSubscription from '../models/PushSubscription.js';
 import Transfer from '../models/Transfer.js';
@@ -13,7 +14,7 @@ export const sendPushNotification = async ({ recipient, subject, message, transf
   if (!configure()) return;
   const transferDetails = transfer?.status ? transfer : await Transfer.findById(transfer).select('sourceLocation destinationLocation status');
   const subscriptions = await PushSubscription.find({ user: recipient._id });
-  const isHeadOfficeRecipient = recipient.location?.trim().toLowerCase() === 'head office' || recipient.role === 'super_admin';
+  const isHeadOfficeRecipient = isHeadOfficeLocation(recipient.location) || recipient.role === 'super_admin';
   const target = transferDetails?.destinationLocation === recipient.location ? 'incoming' : isHeadOfficeRecipient && ['awaiting_head_office', 'invoice_uploaded'].includes(transferDetails?.status) ? 'invoiceRequests' : 'transport';
   await Promise.all(subscriptions.map(async subscription => {
     try {
