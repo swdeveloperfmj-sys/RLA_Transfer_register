@@ -1,3 +1,4 @@
+import { isHeadOffice as isHeadOfficeLocation } from "../config/headOffice.js";
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -20,7 +21,6 @@ const upload = multer({
   limits: { fileSize: 4 * 1024 * 1024 },
   fileFilter: (_req, file, callback) => callback(null, ['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype))
 });
-const isHeadOffice = location => location?.trim().toLowerCase() === 'head office';
 router.use(protect);
 router.get('/push/public-key', (_req, res) => res.json({ publicKey: vapidPublicKey() }));
 router.post('/push/subscribe', async (req, res) => {
@@ -30,7 +30,7 @@ router.post('/push/subscribe', async (req, res) => {
   res.status(201).json({ message: 'Phone notifications enabled.' });
 });
 router.get('/', async (req, res) => {
-  const query = req.user.role === 'super_admin' || isHeadOffice(req.user.location) ? {} : { $or: [{ sourceLocation: req.user.location }, { destinationLocation: req.user.location }] };
+  const query = req.user.role === 'super_admin' || isHeadOfficeLocation(req.user.location) ? {} : { $or: [{ sourceLocation: req.user.location }, { destinationLocation: req.user.location }] };
   res.json(await Transfer.find(query).populate('requestedBy', 'name email').populate('aod', 'number').sort({ createdAt: -1 }));
 });
 router.get('/notifications', async (req, res) => {
@@ -137,7 +137,7 @@ router.post('/', requireAnyPermission(['transfer', 'aodTransport']), async (req,
   res.status(201).json(transfer);
 });
 router.patch('/:id/items/:index/review', requirePermission('invoiceRequests'), async (req, res) => {
-  if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can review transfer items.' });
+  if (!isHeadOfficeLocation(req.user.location)) return res.status(403).json({ message: 'Only Head Office can review transfer items.' });
   const itemIndex = Number(req.params.index);
   const { reviewStatus, holdRemark = '' } = req.body;
   if (!Number.isInteger(itemIndex) || itemIndex < 0 || !['approved', 'held'].includes(reviewStatus)) return res.status(400).json({ message: 'Choose a valid item review decision.' });
@@ -157,7 +157,7 @@ router.patch('/:id/items/:index/review', requirePermission('invoiceRequests'), a
   res.json(transfer);
 });
 router.post('/:id/items/hold', requirePermission('invoiceRequests'), async (req, res) => {
-  if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can hold transfer items.' });
+  if (!isHeadOfficeLocation(req.user.location)) return res.status(403).json({ message: 'Only Head Office can hold transfer items.' });
   const { itemIndexes, holdRemark = '' } = req.body;
   if (!Array.isArray(itemIndexes) || !itemIndexes.length || !holdRemark.trim()) return res.status(400).json({ message: 'Select at least one item and add a hold remark.' });
   const uniqueIndexes = [...new Set(itemIndexes.map(Number))];
@@ -178,7 +178,7 @@ router.post('/:id/items/hold', requirePermission('invoiceRequests'), async (req,
   res.json(transfer);
 });
 router.post('/:id/invoice', requirePermission('invoiceRequests'), upload.single('invoice'), async (req, res) => {
-  if (!isHeadOffice(req.user.location)) return res.status(403).json({ message: 'Only Head Office can upload invoices.' });
+  if (!isHeadOfficeLocation(req.user.location)) return res.status(403).json({ message: 'Only Head Office can upload invoices.' });
   const transfer = await Transfer.findById(req.params.id); if (!transfer) return res.status(404).json({ message: 'Transfer not found.' });
   if (!req.file) return res.status(400).json({ message: 'Attach an invoice document.' });
   if (!['awaiting_head_office', 'invoice_uploaded'].includes(transfer.status)) {

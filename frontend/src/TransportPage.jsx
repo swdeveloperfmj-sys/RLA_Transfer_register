@@ -1,3 +1,4 @@
+import { isHeadOffice as isHeadOfficeLocation } from "./headOffice.js";
 import React, { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -106,7 +107,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       return remaining;
     });
   };
-  const headOffice = user.role === "super_admin" || user.location?.trim().toLowerCase() === "head office";
+  const headOffice = user.role === "super_admin" || isHeadOfficeLocation(user.location);
   useEffect(() => {
     if (!prefillAod) return;
     setDestination(prefillAod.to || "");

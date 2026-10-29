@@ -1,3 +1,4 @@
+import { isHeadOffice as isHeadOfficeLocation } from "../config/headOffice.js";
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
@@ -28,7 +29,7 @@ export const requireAnyPermission = permissions => (req, res, next) => permissio
   : res.status(403).json({ message: 'Your account does not have permission for this function.' });
 
 export const reportsAccess = permission => (req, res, next) => {
-  const isHeadOfficeManager = req.user.role === 'manager' && req.user.location?.trim().toLowerCase() === 'head office';
+  const isHeadOfficeManager = req.user.role === 'manager' && isHeadOfficeLocation(req.user.location);
   const explicitlyAllowed = Array.isArray(req.user.permissions) && req.user.permissions.includes(permission);
   const legacyHeadOfficeAccess = !Array.isArray(req.user.permissions) && isHeadOfficeManager;
   return req.user.role === 'super_admin' || explicitlyAllowed || legacyHeadOfficeAccess
