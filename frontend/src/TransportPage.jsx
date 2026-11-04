@@ -195,6 +195,21 @@ export default function TransportPage({ user, locations, incoming = false, invoi
       setWorkingTransferId("");
     }
   };
+  const uploadZip = async (id, file) => {
+    if (!file || workingTransferId) return;
+    if (!file.name.toLowerCase().endsWith('.zip')) { setError('Please upload a ZIP (.zip) file.'); return; }
+    setWorkingTransferId(id);
+    const data = new FormData();
+    data.append('zip', file);
+    try {
+      await api(`/transfers/${id}/zip`, { method: 'POST', body: data });
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setWorkingTransferId('');
+    }
+  };
   const holdItems = async (transferId) => {
     if (workingTransferId) return;
     const itemIndexes = holdSelections[transferId] || [];
@@ -488,6 +503,18 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                     <FaFileInvoice /> TOG pending
                   </span>
                 )}
+                {headOffice && invoiceRequests &&
+                  ["awaiting_head_office", "invoice_uploaded"].includes(
+                    transfer.status,
+                  ) && (
+                    <label className={`invoice-upload zip-upload ${workingTransferId === transfer._id ? "is-busy" : ""}`}>
+                      <FaCloudArrowUp />
+                      <span>{transfer.zipFile ? "Replace ZIP" : "Upload ZIP"}</span>
+                      <small>ZIP · Max 10MB</small>
+                      <input type="file" accept=".zip,application/zip" disabled={Boolean(workingTransferId)} onChange={(e) => uploadZip(transfer._id, e.target.files?.[0])} />
+                    </label>
+                  )}
+                {transfer.zipFile && <a href={transfer.zipFile.startsWith("http") ? transfer.zipFile : `${API.replace("/api", "")}${transfer.zipFile}`} target="_blank" rel="noreferrer" className="invoice-view"><FaFileInvoice /> Download ZIP{transfer.zipOriginalName ? `: ${transfer.zipOriginalName}` : ""}</a>}
                 {headOffice && invoiceRequests &&
                   ["awaiting_head_office", "invoice_uploaded"].includes(
                     transfer.status,
