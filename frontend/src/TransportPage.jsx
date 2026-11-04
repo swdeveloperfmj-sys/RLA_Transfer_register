@@ -40,6 +40,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
   const [requestMode, setRequestMode] = useState("manual");
   const [sheetRows, setSheetRows] = useState([]);
   const [timeFilter, setTimeFilter] = useState("daily");
+  const [expandedTogRequests, setExpandedTogRequests] = useState({});
   const createInFlight = useRef(false);
   const downloadTemplate = () => {
     const sheet = XLSX.utils.aoa_to_sheet([
@@ -415,8 +416,8 @@ export default function TransportPage({ user, locations, incoming = false, invoi
         </div>
         <div className="transfer-list">
           {visible.map((transfer) => (
-            <article className={`transfer-card ${highlightTransferId === transfer._id ? "transfer-highlight" : ""}`} key={transfer._id}>
-              <div className="transfer-card-top">
+            <article className={`transfer-card ${highlightTransferId === transfer._id ? "transfer-highlight" : ""} ${invoiceRequests && !expandedTogRequests[transfer._id] ? "transfer-card-collapsed" : ""}`} key={transfer._id}>
+              <div className={`transfer-card-top ${invoiceRequests ? "tog-request-toggle" : ""}`} onDoubleClick={invoiceRequests ? () => setExpandedTogRequests((current) => ({ ...current, [transfer._id]: !current[transfer._id] })) : undefined} title={invoiceRequests ? "Double-click to expand or collapse request" : undefined}>
                 <div className="route-icon">
                   <FaTruckFast />
                 </div>
@@ -432,9 +433,12 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                   </span>
                   {transfer.aod?.number && <span className="transport-aod-number">AOD: {transfer.aod.number}</span>}
                 </div>
-                <em className={`transfer-status status-${transfer.status}`}>
-                  {statusLabels[transfer.status]}
-                </em>
+                <div className="transfer-status-group">
+                  {invoiceRequests && <span className="transfer-total-quantity">Total Qty: {transfer.items.reduce((total, item) => total + Number(item.quantity || 0), 0)}</span>}
+                  <em className={`transfer-status status-${transfer.status}`}>
+                    {statusLabels[transfer.status]}
+                  </em>
+                </div>
               </div>
               <div className="transfer-items">
                 <div className="items-title">
