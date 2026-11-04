@@ -21,6 +21,11 @@ const upload = multer({
   limits: { fileSize: 4 * 1024 * 1024 },
   fileFilter: (_req, file, callback) => callback(null, ['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype))
 });
+const zipUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => callback(null, ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'].includes(file.mimetype))
+});
 router.use(protect);
 router.get('/push/public-key', (_req, res) => res.json({ publicKey: vapidPublicKey() }));
 router.post('/push/subscribe', async (req, res) => {
@@ -192,6 +197,20 @@ router.post('/:id/invoice', requirePermission('invoiceRequests'), upload.single(
   transfer.invoiceFile = invoiceUrl; transfer.invoiceStorageKey = storageKey; transfer.invoiceOriginalName = req.file.originalname; transfer.invoiceUploadedAt = new Date(); transfer.status = 'invoice_uploaded'; await transfer.save();
   if (oldStorageKey) await deleteInvoiceFromR2(oldStorageKey).catch(error => console.error('Could not remove replaced R2 invoice:', error.message));
   await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'TOG uploaded for dispatch', message: `TOG uploaded for transfer to ${transfer.destinationLocation}. Review and confirm dispatch.`, transfer: transfer._id });
+  res.json(transfer);
+});
+router.post('/:id/zip', requirePermission('invoiceRequests'), zipUpload.single('zip'), async (req, res) => {
+  if (!isHeadOfficeLocation(req.user.location)) return res.status(403).json({ message: 'Only Head Office can upload ZIP files.' });
+  const transfer = await Transfer.findById(req.params.id); if (!transfer) return res.status(404).json({ message: 'Transfer not found.' });
+  if (!req.file || !req.file.originalname.toLowerCase().endsWith('.zip')) return res.status(400).json({ message: 'Attach a ZIP (.zip) file.' });
+  if (!['awaiting_head_office', 'invoice_uploaded'].includes(transfer.status)) return res.status(409).json({ message: 'ZIP files cannot be replaced after dispatch.' });
+  if (!r2Configured()) return res.status(503).json({ message: 'File storage is not configured. Add the Cloudflare R2 environment variables before uploading.' });
+  const safeName = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storageKey = `invoices/${transfer._id}/zip-${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`;
+  const zipUrl = await uploadInvoiceToR2({ key: storageKey, body: req.file.buffer, contentType: 'application/zip' });
+  const oldStorageKey = transfer.zipStorageKey;
+  transfer.zipFile = zipUrl; transfer.zipStorageKey = storageKey; transfer.zipOriginalName = req.file.originalname; transfer.zipUploadedAt = new Date(); await transfer.save();
+  if (oldStorageKey) await deleteInvoiceFromR2(oldStorageKey).catch(error => console.error('Could not remove replaced R2 ZIP:', error.message));
   res.json(transfer);
 });
 router.post('/:id/cancel', superAdminOnly, async (req, res) => {
