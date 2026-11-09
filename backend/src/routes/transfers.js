@@ -108,8 +108,8 @@ router.get('/reports/transactions', reportsAccess('transactionReports'), async (
     sentItems: transfer.items.map(reportItem),
     heldItems: transfer.items.filter(item => item.reviewStatus === 'held').map(reportItem),
     status: transfer.status,
-    togFile: transfer.invoiceFile || '',
-    togOriginalName: transfer.invoiceOriginalName || ''
+    togFile: transfer.invoiceFile || transfer.zipFile || '',
+    togOriginalName: transfer.invoiceFile ? (transfer.invoiceOriginalName || '') : (transfer.zipOriginalName || '')
   })));
 });
 router.post('/', requireAnyPermission(['transfer', 'aodTransport']), async (req, res) => {
@@ -209,8 +209,9 @@ router.post('/:id/zip', requirePermission('invoiceRequests'), zipUpload.single('
   const storageKey = `invoices/${transfer._id}/zip-${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`;
   const zipUrl = await uploadInvoiceToR2({ key: storageKey, body: req.file.buffer, contentType: 'application/zip' });
   const oldStorageKey = transfer.zipStorageKey;
-  transfer.zipFile = zipUrl; transfer.zipStorageKey = storageKey; transfer.zipOriginalName = req.file.originalname; transfer.zipUploadedAt = new Date(); await transfer.save();
+  transfer.zipFile = zipUrl; transfer.zipStorageKey = storageKey; transfer.zipOriginalName = req.file.originalname; transfer.zipUploadedAt = new Date(); transfer.status = 'invoice_uploaded'; await transfer.save();
   if (oldStorageKey) await deleteInvoiceFromR2(oldStorageKey).catch(error => console.error('Could not remove replaced R2 ZIP:', error.message));
+  await notifyLocationUsers({ location: transfer.sourceLocation, subject: 'TOG uploaded for dispatch', message: `TOG uploaded for transfer to ${transfer.destinationLocation}. Review and confirm dispatch.`, transfer: transfer._id });
   res.json(transfer);
 });
 router.post('/:id/cancel', superAdminOnly, async (req, res) => {
