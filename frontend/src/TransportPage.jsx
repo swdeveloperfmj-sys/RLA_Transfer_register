@@ -502,7 +502,7 @@ export default function TransportPage({ user, locations, incoming = false, invoi
                   >
                     <FaFileInvoice /> View TOD
                   </a>
-                ) : (
+                ) : !transfer.zipFile && (
                   <span className="invoice-pending">
                     <FaFileInvoice /> TOG pending
                   </span>
